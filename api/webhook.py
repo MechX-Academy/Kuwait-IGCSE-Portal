@@ -15,12 +15,11 @@ DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
 try:
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         TEACHERS = json.load(f)
+    print(f"Loaded {len(TEACHERS)} teachers from {DATA_PATH}")
 except Exception as e:
-    print("ERROR loading teachers.json:", e)
+    print(f"ERROR loading teachers.json from {DATA_PATH}: {e}")
     TEACHERS = []
 
-with open(DATA_PATH, "r", encoding="utf-8") as f:
-    TEACHERS = json.load(f)
 
 VALID_SUBJECTS = {
     "math": ["math", "mathematics", "additional math", "further math"],
