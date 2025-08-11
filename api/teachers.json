@@ -1,0 +1,746 @@
+[
+  {
+    "id": "t_ahmed_fathy",
+    "name": "Eng. Ahmed Fathy",
+    "subjects": [
+      "Math"
+    ],
+    "grades": [
+      7,
+      8,
+      9
+    ],
+    "boards": [
+      "Cambridge"
+    ],
+    "bio": "Specialist in IGCSE Cambridge Mathematics (Grades 7–9). Engaging lessons, practice with past exams.",
+    "qualifications": [
+      "IGCSE Maths Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/e/e6/Eng._Ahmed_Fathy.png",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_sai_duenas",
+    "name": "Ms. Saí Dueñas",
+    "subjects": [
+      "English Language"
+    ],
+    "grades": [
+      7,
+      8,
+      9
+    ],
+    "boards": [
+      "Cambridge"
+    ],
+    "bio": "Specialist in Cambridge First & Second Language English (Grades 7–9).",
+    "qualifications": [
+      "IGCSE English Tutor"
+    ],
+    "photo_url": "https://commons.wikimedia.org/wiki/File:Sai_Duenas.png",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_further_math",
+    "name": "Mr. Further Math",
+    "subjects": [
+      "Further Math"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Further Math tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_physics",
+    "name": "Ms. Physics",
+    "subjects": [
+      "Physics"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Physics tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_chemistry",
+    "name": "Mr. Chemistry",
+    "subjects": [
+      "Chemistry"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Chemistry tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_biology",
+    "name": "Ms. Biology",
+    "subjects": [
+      "Biology"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Biology tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_english_literature",
+    "name": "Mr. English Literature",
+    "subjects": [
+      "English Literature"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE English Literature tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_computer_science",
+    "name": "Ms. Computer Science",
+    "subjects": [
+      "Computer Science"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Computer Science tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_ict",
+    "name": "Mr. ICT",
+    "subjects": [
+      "ICT"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE ICT tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_business",
+    "name": "Ms. Business",
+    "subjects": [
+      "Business"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Business tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_economics",
+    "name": "Mr. Economics",
+    "subjects": [
+      "Economics"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Economics tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_accounting",
+    "name": "Ms. Accounting",
+    "subjects": [
+      "Accounting"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Accounting tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_geography",
+    "name": "Mr. Geography",
+    "subjects": [
+      "Geography"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Geography tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_history",
+    "name": "Ms. History",
+    "subjects": [
+      "History"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE History tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_arabic",
+    "name": "Mr. Arabic",
+    "subjects": [
+      "Arabic"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Arabic tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_french",
+    "name": "Ms. French",
+    "subjects": [
+      "French"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE French tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_german",
+    "name": "Mr. German",
+    "subjects": [
+      "German"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE German tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_spanish",
+    "name": "Ms. Spanish",
+    "subjects": [
+      "Spanish"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Spanish tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_art_and_design",
+    "name": "Mr. Art & Design",
+    "subjects": [
+      "Art & Design"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Art & Design tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_design_and_technology",
+    "name": "Ms. Design & Technology",
+    "subjects": [
+      "Design & Technology"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Design & Technology tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_music",
+    "name": "Mr. Music",
+    "subjects": [
+      "Music"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Music tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_drama",
+    "name": "Ms. Drama",
+    "subjects": [
+      "Drama"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Drama tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_physical_education",
+    "name": "Mr. Physical Education",
+    "subjects": [
+      "Physical Education"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Physical Education tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_global_perspectives",
+    "name": "Ms. Global Perspectives",
+    "subjects": [
+      "Global Perspectives"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Global Perspectives tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_environmental_management",
+    "name": "Mr. Environmental Management",
+    "subjects": [
+      "Environmental Management"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Environmental Management tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t_enterprise",
+    "name": "Ms. Enterprise",
+    "subjects": [
+      "Enterprise"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "boards": [
+      "Cambridge",
+      "Edexcel",
+      "OxfordAQA"
+    ],
+    "bio": "Online IGCSE Enterprise tutor. Supports Cambridge, Edexcel, and OxfordAQA boards.",
+    "qualifications": [
+      "Experienced IGCSE Tutor"
+    ],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/3f/Placeholder_view_vector.svg",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  }
+]
