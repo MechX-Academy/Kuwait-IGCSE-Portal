@@ -11,7 +11,10 @@ if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "teachers.json")
+#DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "teachers.json")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
+
+
 with open(DATA_PATH, "r", encoding="utf-8") as f:
     TEACHERS = json.load(f)
 
