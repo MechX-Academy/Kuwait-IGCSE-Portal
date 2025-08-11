@@ -136,6 +136,7 @@ def tg(method: str, payload: Dict[str, Any]):
     return requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
 
 @app.post("/")
+@app.post("/api/webhook")
 def webhook():
     if not BOT_API:
         return jsonify({"ok": False, "error": "Missing TELEGRAM_BOT_TOKEN"}), 500
