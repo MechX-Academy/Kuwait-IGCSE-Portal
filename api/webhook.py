@@ -142,14 +142,12 @@ def tg(method: str, payload: Dict[str, Any]):
     return requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
 
 
-@app.get("/")
+# --- ping for quick GET check ---
 @app.get("/api/webhook")
 def ping():
-    return jsonify(ok=True, msg="webhook alive")
+    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS))
 
-def webhook_ping():
-    return jsonify(ok=True, teachers=len(TEACHERS))
-
+# --- Telegram webhook (POST) ---
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook(subpath=None):
@@ -164,31 +162,39 @@ def webhook(subpath=None):
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
 
-# /start welcome message
-if text.lower() in ("/start", "start"):
-    tg("sendMessage", {"chat_id": chat_id,
-        "text": "Hi! Tell me the subject, grade, and board (Cambridge/Edexcel/OxfordAQA).\nExample: 'Math Grade 8 Cambridge'."})
-    return jsonify({"ok": True})
+    # /start welcome message
+    if text.lower() in ("/start", "start"):
+        tg("sendMessage", {
+            "chat_id": chat_id,
+            "text": "Hi! Tell me the subject, grade, and board (Cambridge/Edexcel/OxfordAQA).\nExample: 'Math Grade 8 Cambridge'."
+        })
+        return jsonify({"ok": True})
 
-found = extract_all(text)
-
+    # extract info
+    found = extract_all(text)
 
     if not found.get("subject"):
-        tg("sendMessage", {"chat_id": chat_id, "text": "Which subject do you need? (e.g., Math / Physics / Chemistry / Business / English...)"})
+        tg("sendMessage", {"chat_id": chat_id,
+                           "text": "Which subject do you need? (e.g., Math / Physics / Chemistry / Business / English...)"})
         return jsonify({"ok": True})
+
     if not found.get("grade"):
-        tg("sendMessage", {"chat_id": chat_id, "text": "What grade/year? (e.g., Grade 7 / 8 / 9 / 10 / 11 / 12)"})
+        tg("sendMessage", {"chat_id": chat_id,
+                           "text": "What grade/year? (e.g., Grade 7 / 8 / 9 / 10 / 11 / 12)"})
         return jsonify({"ok": True})
+
     if not found.get("board"):
-        tg("sendMessage", {"chat_id": chat_id, "text": "Which exam board? (Cambridge / Edexcel / OxfordAQA)"})
+        tg("sendMessage", {"chat_id": chat_id,
+                           "text": "Which exam board? (Cambridge / Edexcel / OxfordAQA)"})
         return jsonify({"ok": True})
 
     results = match_teachers(found["subject"], found["grade"], found["board"], limit=4)
 
     if not results:
         tg("sendMessage", {"chat_id": chat_id,
-                           "text": (f"Sorry—no matches right now for {found['subject']} (Grade {found['grade']}) [{found['board']}]. "
-                                    "Would you accept an online tutor from another board or a closely related subject?")})
+                           "text": (f"Sorry—no matches right now for {found['subject']} (Grade {found['grade']}) "
+                                    f"[{found['board']}]. Would you accept an online tutor from another board "
+                                    "or a closely related subject?")})
         return jsonify({"ok": True})
 
     intro = (f"Great ✅ Best matches:\n"
@@ -206,5 +212,7 @@ found = extract_all(text)
         if t.get("photo_url"):
             tg("sendPhoto", {"chat_id": chat_id, "photo": t["photo_url"]})
 
-    tg("sendMessage", {"chat_id": chat_id, "text": "You can contact any tutor directly via the WhatsApp link in the card. 🌟"})
+    tg("sendMessage", {"chat_id": chat_id,
+                       "text": "You can contact any tutor directly via the WhatsApp link in the card. 🌟"})
     return jsonify({"ok": True})
+
