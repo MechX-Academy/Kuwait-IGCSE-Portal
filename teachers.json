@@ -1,0 +1,94 @@
+[
+  {
+    "id": "t001",
+    "name": "Eng. Ahmed Fathy",
+    "subjects": [
+      "IGCSE Cambridge Math"
+    ],
+    "grades": [
+      7,
+      8,
+      9
+    ],
+    "bio": "Robotics & Automation Engineer specializes in IGCSE cambridge math exam strategies and past papers.",
+    "qualifications": [
+      "Bachelor of Science in Mechatronics Engineering from AUC"
+    ],
+    "photo_url": "https://commons.wikimedia.org/wiki/File:Eng._Ahmed_Fathy.png",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t002",
+    "name": "bla bla",
+    "subjects": [
+      "Physics",
+      "Math"
+    ],
+    "grades": [
+      9,
+      10,
+      11,
+      12
+    ],
+    "schools_experience": [
+      "El Alsson",
+      "AIS"
+    ],
+    "city": "New Cairo",
+    "areas": [
+      "New Cairo",
+      "Tagammoa",
+      "Madinaty",
+      "Rehab"
+    ],
+    "bio": "Physics & Math tutor, focuses on conceptual understanding and problem-solving drills.",
+    "qualifications": [
+      "BSc Mechatronics",
+      "PGCEi"
+    ],
+    "photo_url": "https://commons.wikimedia.org/wiki/File:Eng._Ahmed_Fathy.png",
+    "contact": {
+      "phone": "+201112223334",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  },
+  {
+    "id": "t003",
+    "name": "bla bla bla",
+    "subjects": [
+      "Chemistry",
+      "Biology"
+    ],
+    "grades": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "schools_experience": [
+      "NIS",
+      "El Rowad"
+    ],
+    "city": "Giza",
+    "areas": [
+      "Dokki",
+      "Mohandessin",
+      "Agouza"
+    ],
+    "bio": "Chemistry/Biology teacher with strong track record in IGCSE practicals & theory.",
+    "qualifications": [
+      "BSc Chemistry",
+      "IGCSE Examiner (former)"
+    ],
+    "photo_url": "https://commons.wikimedia.org/wiki/File:Eng._Ahmed_Fathy.png",
+    "contact": {
+      "phone": "+39516856905",
+      "whatsapp": "https://wa.me/96597273411"
+    }
+  }
+]

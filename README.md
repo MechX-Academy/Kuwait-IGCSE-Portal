@@ -1,2 +1,1 @@
-# Kuwait-IGCSE-Portal
-Educational Academy
+# Kuwait IGCSE Portal – Telegram Bot (Vercel)
