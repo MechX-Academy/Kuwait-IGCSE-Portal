@@ -147,6 +147,9 @@ def tg(method: str, payload: Dict[str, Any]):
 def ping():
     return jsonify(ok=True, msg="webhook alive")
 
+def webhook_ping():
+    return jsonify(ok=True, teachers=len(TEACHERS))
+
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook(subpath=None):
