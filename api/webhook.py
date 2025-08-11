@@ -149,7 +149,14 @@ def webhook(subpath=None):   # <— أضف ده
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
 
-    found = extract_all(text)
+# /start welcome message
+if text.lower() in ("/start", "start"):
+    tg("sendMessage", {"chat_id": chat_id,
+        "text": "Hi! Tell me the subject, grade, and board (Cambridge/Edexcel/OxfordAQA).\nExample: 'Math Grade 8 Cambridge'."})
+    return jsonify({"ok": True})
+
+found = extract_all(text)
+
 
     if not found.get("subject"):
         tg("sendMessage", {"chat_id": chat_id, "text": "Which subject do you need? (e.g., Math / Physics / Chemistry / Business / English...)"})
