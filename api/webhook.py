@@ -1,4 +1,4 @@
-import os, json, re
+import os, json, re, time
 from typing import Dict, Any, List, Tuple, Set
 from flask import Flask, request, jsonify
 import requests
@@ -13,7 +13,6 @@ if not TELEGRAM_TOKEN:
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
 def tg(method: str, payload: Dict[str, Any]):
-    """Call Telegram Bot API"""
     if not BOT_API:
         return None
     try:
@@ -32,7 +31,6 @@ except Exception as e:
     print(f"ERROR loading teachers.json from {DATA_PATH}: {e}")
     TEACHERS = []
 
-# canonical subjects (used by fuzzy parsing + matching)
 VALID_SUBJECTS = {
     "math": ["math", "mathematics", "additional math", "further math"],
     "physics": ["physics", "phys"],
@@ -58,7 +56,6 @@ VALID_SUBJECTS = {
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
 }
 
-# --- UI choices (short codes to keep callback_data small) ---
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
         ("MTH", "Mathematics"),
@@ -113,7 +110,7 @@ CODE_TO_SUBJECT = {
 
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
-# --- small helpers ---
+# --- helpers ---
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
@@ -121,13 +118,11 @@ def extract_grade(text: str):
     m = re.search(r"(grade|yr|year)\s*(\d{1,2})", text, re.I)
     if m:
         g = int(m.group(2))
-        if 1 <= g <= 13:
-            return g
+        if 1 <= g <= 13: return g
     m2 = re.search(r"\b(\d{1,2})\b", text)
     if m2:
         g2 = int(m2.group(1))
-        if 1 <= g2 <= 13:
-            return g2
+        if 1 <= g2 <= 13: return g2
     return None
 
 def extract_subject(text: str):
@@ -148,10 +143,7 @@ def match_teachers(subject=None, grade=None, board=None, limit=4):
             if any(_norm(subject) == _norm(s) for s in t.get("subjects", [])):
                 score += 60
             else:
-                best_sub = max(
-                    (fuzz.partial_ratio(subject.lower(), s.lower()) for s in t.get("subjects", [])),
-                    default=0
-                )
+                best_sub = max((fuzz.partial_ratio(subject.lower(), s.lower()) for s in t.get("subjects", [])), default=0)
                 score += best_sub * 0.3
         if grade and t.get("grades"):
             if grade in t["grades"]:
@@ -163,7 +155,6 @@ def match_teachers(subject=None, grade=None, board=None, limit=4):
     scored.sort(key=lambda x: x[0], reverse=True)
     return [t for sc, t in scored[:limit] if sc > 30]
 
-# --- encode multi-select state in callback_data (no DB) ---
 def encode_sel(sel: Set[str]) -> str:
     return ".".join(sorted(sel)) if sel else ""
 
@@ -215,12 +206,28 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press *Done*.\n"
             f"Selected: {chosen}")
 
-# --- health/ping ---
+# --------- DEDUPE (anti-duplicate) ----------
+# Keep last selections per chat for 60s to ignore Telegram retries
+RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
+
+def already_done(chat_id: int, signature: str, ttl: int = 60) -> bool:
+    now = time.time()
+    lst = RECENT_DONE.get(chat_id, [])
+    lst = [(k, t) for (k, t) in lst if now - t < ttl]
+    RECENT_DONE[chat_id] = lst
+    for k, _ in lst:
+        if k == signature:
+            return True
+    lst.append((signature, now))
+    RECENT_DONE[chat_id] = lst
+    return False
+
+# --- health ---
 @app.get("/api/webhook")
 def ping():
     return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS))
 
-# --- main webhook ---
+# --- webhook ---
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook(subpath=None):
@@ -229,17 +236,17 @@ def webhook(subpath=None):
 
     update = request.get_json(force=True, silent=True) or {}
 
-    # ====== handle callback buttons ======
+    # callbacks
     if "callback_query" in update:
         cq = update["callback_query"]
         chat_id = cq["message"]["chat"]["id"]
         msg_id  = cq["message"]["message_id"]
         data = cq.get("data", "")
 
-        # ✅ stop Telegram from re-sending the same callback
+        # ack immediately to prevent retries
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
-        # إذا الرسالة أصبحت "Thanks!" خلاص اقفل أي ضغطات قديمة
+        # ignore late retries after we've converted message to Thanks
         if cq["message"].get("text", "").startswith("Thanks!"):
             return jsonify({"ok": True})
 
@@ -252,14 +259,12 @@ def webhook(subpath=None):
             else:
                 tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
 
-        # Step 1 -> Step 2
         if data.startswith("B|"):
             b = data.split("|", 1)[1]
             edit(text="*Step 2/3 – Grade*\nSelect your child's current grade:",
                  reply_markup=kb_grade(b), parse_mode="Markdown")
             return jsonify({"ok": True})
 
-        # Step 2 -> Step 3
         if data.startswith("G|"):
             _, g, b = data.split("|", 2)
             g = int(g)
@@ -269,7 +274,6 @@ def webhook(subpath=None):
                  parse_mode="Markdown")
             return jsonify({"ok": True})
 
-        # toggle subject
         if data.startswith("T|"):
             _, code, b, g, enc = data.split("|", 4)
             g = int(g)
@@ -284,19 +288,23 @@ def webhook(subpath=None):
                  parse_mode="Markdown")
             return jsonify({"ok": True})
 
-        # Done -> show results
         if data.startswith("D|"):
             _, b, g, enc = data.split("|", 3)
             g = int(g)
             sel = decode_sel(enc)
             board = BOARD_CODES.get(b, b)
-            subjects = sorted({CODE_TO_SUBJECT[c] for c in sel})  # unique + sorted
+            subjects = sorted({CODE_TO_SUBJECT[c] for c in sel})
 
             if not subjects:
                 tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
                 return jsonify({"ok": True})
 
-            # 🔒 remove keyboard to prevent multiple Done presses
+            # dedupe key
+            signature = f"{b}|{g}|{'.'.join(sorted(sel))}"
+            if already_done(chat_id, signature):
+                return jsonify({"ok": True})
+
+            # remove keyboard to block further presses
             tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id,
                                           "reply_markup": {"inline_keyboard": []}})
 
@@ -328,10 +336,9 @@ def webhook(subpath=None):
                                "text": "You can contact any tutor via the WhatsApp link on each card. 🌟"})
             return jsonify({"ok": True})
 
-        # ignore unknown
         return jsonify({"ok": True})
 
-    # ====== handle normal messages (/start) ======
+    # messages
     msg = update.get("message") or update.get("edited_message")
     if not msg:
         return jsonify({"ok": True})
@@ -348,7 +355,6 @@ def webhook(subpath=None):
         })
         return jsonify({"ok": True})
 
-    # default: nudge user to use flow
     tg("sendMessage", {
         "chat_id": chat_id,
         "text": "Please use the guided flow 👇",
