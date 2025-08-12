@@ -1,4 +1,4 @@
-import os, json, re, time
+import os, json, re, time, traceback
 from typing import Dict, Any, List, Tuple, Set
 from flask import Flask, request, jsonify
 import requests
@@ -6,26 +6,26 @@ from rapidfuzz import fuzz
 
 app = Flask(__name__)
 
-# ---------------- build tag (للتأكد من النسخة) ----------------
-BUILD_TAG = "no-echo-v6"
+# ================== Build tag (للتأكد إن النسخة الجديدة اتنشرت) ==================
+BUILD_TAG = "no-echo-v7"
 
-# ---------------- Telegram setup ----------------
+# ================== Telegram setup ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
 def tg(method: str, payload: Dict[str, Any]):
+    """Helper to call Telegram Bot API safely."""
     if not BOT_API:
         return None
     try:
-        r = requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
-        return r
+        return requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
     except Exception as e:
-        print("Telegram error:", e)
+        print("[TG ERROR]", e)
         return None
 
-# ---------------- Data ----------------
+# ================== Load teachers ==================
 DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
 try:
     with open(DATA_PATH, "r", encoding="utf-8") as f:
@@ -35,27 +35,7 @@ except Exception as e:
     print(f"[BOOT] ERROR loading teachers.json from {DATA_PATH}: {e}")
     TEACHERS = []
 
-# (للمضاهاة فقط)
-VALID_SUBJECTS = {
-    "math": ["math", "mathematics", "additional math", "further math"],
-    "physics": ["physics", "phys"], "chemistry": ["chemistry", "chem"],
-    "biology": ["biology", "bio"],
-    "english language": ["english", "english language", "esl", "first language english", "second language english"],
-    "english literature": ["english literature", "literature"],
-    "computer science": ["computer science", "cs"],
-    "ict": ["ict", "information and communication technology"],
-    "business": ["business", "business studies"],
-    "economics": ["economics", "econ"], "accounting": ["accounting", "accounts"],
-    "geography": ["geography", "geo"], "history": ["history"],
-    "arabic": ["arabic", "arabic first language", "arabic foreign language"],
-    "french": ["french"], "german": ["german"], "spanish": ["spanish"],
-    "sociology": ["sociology"], "humanities & social sciences": ["humanities", "social sciences"],
-    "environmental management": ["environmental management", "em"],
-    "physical education": ["pe", "physical education"],
-    "travel & tourism": ["travel & tourism", "travel", "tourism"],
-}
-
-# UI groups (codes قصيرة)
+# ================== Subject groups (UI) ==================
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
         ("MTH", "Mathematics"),
@@ -86,6 +66,7 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     ],
 }
 
+# الكود → الاسم النهائي المستخدم في matching
 CODE_TO_SUBJECT = {
     "MTH": "Math",
     "ENL": "English Language",
@@ -94,7 +75,7 @@ CODE_TO_SUBJECT = {
     "CHE": "Chemistry",
     "PHY": "Physics",
     "HUM": "Humanities & Social Sciences",
-    "BUS": "Business",
+    "BUS": "Business",            # نستخدم "Business" علشان توافق بيانات المدرسين
     "ECO": "Economics",
     "ACC": "Accounting",
     "SOC": "Sociology",
@@ -110,11 +91,12 @@ CODE_TO_SUBJECT = {
 
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
-# ---------------- helpers ----------------
+# ================== helpers ==================
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
+    """Score-based matching over teachers.json"""
     scored = []
     for t in TEACHERS:
         score = 0
@@ -122,8 +104,9 @@ def match_teachers(subject=None, grade=None, board=None, limit=4):
             if any(_norm(subject) == _norm(s) for s in t.get("subjects", [])):
                 score += 60
             else:
-                best_sub = max((fuzz.partial_ratio(subject.lower(), s.lower()) for s in t.get("subjects", [])), default=0)
-                score += best_sub * 0.3
+                best = max((fuzz.partial_ratio(subject.lower(), s.lower())
+                           for s in t.get("subjects", [])), default=0)
+                score += best * 0.3
         if grade and t.get("grades"):
             if grade in t["grades"]:
                 score += 20
@@ -165,7 +148,8 @@ def kb_subjects(board_code: str, grade: int, sel: Set[str]):
         for i in range(0, len(items), 2):
             row = []
             for code, label in items[i:i+2]:
-                row.append({"text": f"{tick(code)} {label}", "callback_data": f"T|{code}|{board_code}|{grade}|{encode_sel(sel)}"})
+                row.append({"text": f"{tick(code)} {label}",
+                            "callback_data": f"T|{code}|{board_code}|{grade}|{encode_sel(sel)}"})
             rows.append(row)
     rows.append([
         {"text": "Done ✅", "callback_data": f"D|{board_code}|{grade}|{encode_sel(sel)}"},
@@ -182,7 +166,7 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press *Done*.\n"
             f"Selected: {chosen}")
 
-# ------------- DEDUPE ضد التكرار -------------
+# ============ Idempotency (ضد التكرار لو Telegram عمل retries) ============
 RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
 def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
     now = time.time()
@@ -196,7 +180,7 @@ def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
     RECENT_DONE[chat_id] = lst
     return False
 
-# ------------- Final message formatting -------------
+# ================== Final message formatting ==================
 def format_teacher_line(t: Dict[str, Any]) -> str:
     quals = ", ".join(t.get("qualifications", []))
     boards = ", ".join(t.get("boards", []))
@@ -232,7 +216,7 @@ def build_final_message(board: str, grade: int, subjects: List[str], matches: Li
 
     top_preview = ""
     if matches and matches[0].get("photo_url"):
-        top_preview = matches[0]["photo_url"] + "\n\n"
+        top_preview = matches[0]["photo_url"] + "\n\n"   # يخلي تيليجرام يعمل preview للصورة الأولى
 
     return top_preview + header + "\n" + "\n".join(body_lines)
 
@@ -241,7 +225,7 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
     for s in subjects:
         for t in match_teachers(s, grade, board, limit=3):
             tid = t.get("id") or t["name"]
-            if tid in seen:
+            if tid in seen:    # لا تكرار
                 continue
             seen.add(tid)
             out.append(t)
@@ -249,133 +233,145 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
                 return out
     return out
 
-# ---------------- health ----------------
+# ================== Health ==================
 @app.get("/api/webhook")
 def ping():
     return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS), build=BUILD_TAG)
 
-# ---------------- webhook ----------------
+# ================== Webhook ==================
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook(subpath=None):
     if not BOT_API:
         return jsonify({"ok": False, "error": "Missing TELEGRAM_BOT_TOKEN"}), 500
 
-    update = request.get_json(force=True, silent=True) or {}
+    try:
+        update = request.get_json(force=True, silent=True) or {}
+        try:
+            print("[UPDATE]", json.dumps(update)[:2000])
+        except Exception:
+            print("[UPDATE] (non-serializable)")
 
-    # ===== Inline button callbacks =====
-    if "callback_query" in update:
-        cq = update["callback_query"]
-        chat_id = cq["message"]["chat"]["id"]
-        msg_id  = cq["message"]["message_id"]
-        data = cq.get("data", "")
+        # ===== inline callbacks =====
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            chat_id = cq["message"]["chat"]["id"]
+            msg_id  = cq["message"]["message_id"]
+            data = cq.get("data", "")
 
-        tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-        if cq["message"].get("text", "").startswith("Thanks!"):
-            return jsonify({"ok": True})
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
-        def edit(text=None, reply_markup=None, parse_mode=None, disable_preview=None):
-            if text is not None:
-                payload = {"chat_id": chat_id, "message_id": msg_id, "text": text}
-                if parse_mode: payload["parse_mode"] = parse_mode
-                if reply_markup is not None: payload["reply_markup"] = reply_markup
-                if disable_preview is not None: payload["disable_web_page_preview"] = disable_preview
-                tg("editMessageText", payload)
-            else:
-                tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
-
-        # Step 1 -> Step 2
-        if data.startswith("B|"):
-            b = data.split("|", 1)[1]
-            print(f"[FLOW] board={b}")
-            edit(text="*Step 2/3 – Grade*\nSelect your child's current grade:",
-                 reply_markup=kb_grade(b), parse_mode="Markdown")
-            return jsonify({"ok": True})
-
-        # Step 2 -> Step 3
-        if data.startswith("G|"):
-            _, g, b = data.split("|", 2)
-            g = int(g)
-            sel: Set[str] = set()
-            print(f"[FLOW] grade={g} board={b}")
-            edit(text=summary_text(b, g, sel),
-                 reply_markup=kb_subjects(b, g, sel),
-                 parse_mode="Markdown")
-            return jsonify({"ok": True})
-
-        # Toggle subject (edit فقط)
-        if data.startswith("T|"):
-            _, code, b, g, enc = data.split("|", 4)
-            g = int(g)
-            sel = decode_sel(enc)
-            if code == "__RESET__":
-                sel = set()
-            else:
-                if code in sel: sel.remove(code)
-                else: sel.add(code)
-            print(f"[FLOW] toggle code={code} -> sel={sorted(sel)}")
-            edit(text=summary_text(b, g, sel),
-                 reply_markup=kb_subjects(b, g, sel),
-                 parse_mode="Markdown")
-            return jsonify({"ok": True})
-
-        # Done -> رسالة واحدة (edit لنفس الرسالة)
-        if data.startswith("D|"):
-            _, b, g, enc = data.split("|", 3)
-            g = int(g)
-            sel = decode_sel(enc)
-            board = BOARD_CODES.get(b, b)
-            subjects = sorted({CODE_TO_SUBJECT[c] for c in sel})
-
-            if not subjects:
-                tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+            # لو الرسالة تحولت بالفعل لنتيجة، تجاهل ضغطات متأخرة
+            if (cq.get("message", {}).get("text") or "").startswith("Thanks!"):
                 return jsonify({"ok": True})
 
-            signature = f"{msg_id}|{b}|{g}|{'.'.join(sorted(sel))}"
-            if already_done(chat_id, signature):
-                print(f"[SKIP] duplicate done {signature}")
+            def edit(text=None, reply_markup=None, parse_mode=None, disable_preview=None):
+                if text is not None:
+                    payload = {"chat_id": chat_id, "message_id": msg_id, "text": text}
+                    if parse_mode: payload["parse_mode"] = parse_mode
+                    if reply_markup is not None: payload["reply_markup"] = reply_markup
+                    if disable_preview is not None: payload["disable_web_page_preview"] = disable_preview
+                    tg("editMessageText", payload)
+                else:
+                    tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
+
+            # Step 1 -> Step 2
+            if data.startswith("B|"):
+                b = data.split("|", 1)[1]
+                edit(text="*Step 2/3 – Grade*\nSelect your child's current grade:",
+                     reply_markup=kb_grade(b), parse_mode="Markdown")
                 return jsonify({"ok": True})
 
-            tg("editMessageReplyMarkup", {
-                "chat_id": chat_id, "message_id": msg_id,
-                "reply_markup": {"inline_keyboard": []}
-            })
+            # Step 2 -> Step 3
+            if data.startswith("G|"):
+                _, g, b = data.split("|", 2)
+                g = int(g)
+                sel: Set[str] = set()
+                edit(text=summary_text(b, g, sel),
+                     reply_markup=kb_subjects(b, g, sel),
+                     parse_mode="Markdown")
+                return jsonify({"ok": True})
 
-            matches = collect_best_matches(subjects, g, board, k=4)
-            final_text = build_final_message(board, g, subjects, matches)
-            print(f"[DONE] chat={chat_id} msg={msg_id} board={board} grade={g} subjects={subjects} matches={len(matches)}")
+            # Toggle subject
+            if data.startswith("T|"):
+                _, code, b, g, enc = data.split("|", 4)
+                g = int(g)
+                sel = decode_sel(enc)
+                if code == "__RESET__":
+                    sel = set()
+                else:
+                    if code in sel: sel.remove(code)
+                    else: sel.add(code)
+                edit(text=summary_text(b, g, sel),
+                     reply_markup=kb_subjects(b, g, sel),
+                     parse_mode="Markdown")
+                return jsonify({"ok": True})
 
-            tg("editMessageText", {
+            # Done -> رسالة واحدة (edit فقط لنفس الرسالة)
+            if data.startswith("D|"):
+                _, b, g, enc = data.split("|", 3)
+                g = int(g)
+                sel = decode_sel(enc)
+                board = BOARD_CODES.get(b, b)
+                subjects = sorted({CODE_TO_SUBJECT[c] for c in sel})
+
+                if not subjects:
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+                    return jsonify({"ok": True})
+
+                signature = f"{msg_id}|{b}|{g}|{'.'.join(sorted(sel))}"
+                if already_done(chat_id, signature):
+                    print(f"[SKIP] duplicate done {signature}")
+                    return jsonify({"ok": True})
+
+                # اقفل الكيبورد
+                tg("editMessageReplyMarkup", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "reply_markup": {"inline_keyboard": []}
+                })
+
+                matches = collect_best_matches(subjects, g, board, k=4)
+                final_text = build_final_message(board, g, subjects, matches)
+                print(f"[DONE] chat={chat_id} msg={msg_id} board={board} grade={g} subjects={subjects} matches={len(matches)}")
+
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": msg_id,
+                    "text": final_text,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": False
+                })
+                return jsonify({"ok": True})
+
+            return jsonify({"ok": True})
+
+        # ===== normal text messages =====
+        msg = update.get("message") or update.get("edited_message")
+        if not msg:
+            return jsonify({"ok": True})
+
+        chat_id = msg["chat"]["id"]
+        text = (msg.get("text") or "").strip().lower()
+
+        if text in ("/start", "start"):
+            tg("sendMessage", {
                 "chat_id": chat_id,
-                "message_id": msg_id,
-                "text": final_text,
+                "text": "*Step 1/3 – Board*\nWhich board or curriculum does your child follow?",
                 "parse_mode": "Markdown",
-                "disable_web_page_preview": False
+                "reply_markup": kb_board()
             })
             return jsonify({"ok": True})
 
-        return jsonify({"ok": True})
-
-    # ===== Normal messages =====
-    msg = update.get("message") or update.get("edited_message")
-    if not msg:
-        return jsonify({"ok": True})
-
-    chat_id = msg["chat"]["id"]
-    text = (msg.get("text") or "").strip().lower()
-
-    if text in ("/start", "start"):
+        # أي رسالة خارج الفلو:
         tg("sendMessage", {
             "chat_id": chat_id,
-            "text": "*Step 1/3 – Board*\nWhich board or curriculum does your child follow?",
-            "parse_mode": "Markdown",
+            "text": "Please use the guided flow 👇",
             "reply_markup": kb_board()
         })
         return jsonify({"ok": True})
 
-    tg("sendMessage", {
-        "chat_id": chat_id,
-        "text": "Please use the guided flow 👇",
-        "reply_markup": kb_board()
-    })
-    return jsonify({"ok": True})
+    except Exception as e:
+        # رجع 200 حتى لو في خطأ علشان تمنع retries/تكرار من تيليجرام
+        print("[ERR]", repr(e))
+        print(traceback.format_exc())
+        return jsonify({"ok": True}), 200
