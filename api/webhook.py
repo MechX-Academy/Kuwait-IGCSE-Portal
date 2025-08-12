@@ -9,10 +9,12 @@ app = Flask(__name__)
 BUILD_TAG = "portal-no-repeats-html-v2"
 
 # ---------- Telegram ----------
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
 if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
+
+
 
 def tg(method: str, payload: Dict[str, Any]):
     """Telegram call with logging; never crash."""
