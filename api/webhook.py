@@ -240,8 +240,11 @@ def ping():
 
 # ========= نفس الهاندلر، لكن هنعرّفه كدالة داخلية ونربطه بأكثر من مسار =========
 def _handle_webhook():
-    if not BOT_API:
-        return jsonify({"ok": False, "error": "Missing TELEGRAM_BOT_TOKEN"}), 500
+    try:
+        if not BOT_API:
+            print("[ERR] Missing TELEGRAM_BOT_TOKEN")
+            # رجّع 200 عشان تيليجرام مايعيدش نفس الـ update
+            return jsonify({"ok": True, "warn": "Missing TELEGRAM_BOT_TOKEN"}), 200
 
     try:
         update = request.get_json(force=True, silent=True) or {}
