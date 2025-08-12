@@ -6,8 +6,8 @@ from rapidfuzz import fuzz
 
 app = Flask(__name__)
 
-# ================== Build tag (للتأكد إن النسخة الجديدة اتنشرت) ==================
-BUILD_TAG = "no-echo-v7"
+# ================== Build tag ==================
+BUILD_TAG = "no-echo-v8"
 
 # ================== Telegram setup ==================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -16,7 +16,6 @@ if not TELEGRAM_TOKEN:
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
 def tg(method: str, payload: Dict[str, Any]):
-    """Helper to call Telegram Bot API safely."""
     if not BOT_API:
         return None
     try:
@@ -66,7 +65,6 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     ],
 }
 
-# الكود → الاسم النهائي المستخدم في matching
 CODE_TO_SUBJECT = {
     "MTH": "Math",
     "ENL": "English Language",
@@ -75,7 +73,7 @@ CODE_TO_SUBJECT = {
     "CHE": "Chemistry",
     "PHY": "Physics",
     "HUM": "Humanities & Social Sciences",
-    "BUS": "Business",            # نستخدم "Business" علشان توافق بيانات المدرسين
+    "BUS": "Business",
     "ECO": "Economics",
     "ACC": "Accounting",
     "SOC": "Sociology",
@@ -96,7 +94,6 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
-    """Score-based matching over teachers.json"""
     scored = []
     for t in TEACHERS:
         score = 0
@@ -166,7 +163,7 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press *Done*.\n"
             f"Selected: {chosen}")
 
-# ============ Idempotency (ضد التكرار لو Telegram عمل retries) ============
+# ============ Idempotency ============
 RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
 def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
     now = time.time()
@@ -193,7 +190,6 @@ def format_teacher_line(t: Dict[str, Any]) -> str:
     whatsapp = f"[WhatsApp]({wa})" if wa else ""
     photo_url = t.get("photo_url") or ""
     photo = f"[Photo]({photo_url})" if photo_url else ""
-
     parts = [
         f"*{t['name']}* — {', '.join(t.get('subjects', []))}",
         "  " + " | ".join([x for x in [grades, f"Boards {boards}" if boards else ""] if x]),
@@ -213,11 +209,9 @@ def build_final_message(board: str, grade: int, subjects: List[str], matches: Li
             body_lines.append(f"\n*{i})* " + format_teacher_line(t))
     else:
         body_lines.append("\nSorry, no exact matches right now. We’ll expand the search and get back to you.")
-
     top_preview = ""
     if matches and matches[0].get("photo_url"):
-        top_preview = matches[0]["photo_url"] + "\n\n"   # يخلي تيليجرام يعمل preview للصورة الأولى
-
+        top_preview = matches[0]["photo_url"] + "\n\n"
     return top_preview + header + "\n" + "\n".join(body_lines)
 
 def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
@@ -225,7 +219,7 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
     for s in subjects:
         for t in match_teachers(s, grade, board, limit=3):
             tid = t.get("id") or t["name"]
-            if tid in seen:    # لا تكرار
+            if tid in seen:
                 continue
             seen.add(tid)
             out.append(t)
@@ -236,17 +230,16 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
 # ================== Health ==================
 @app.get("/api/webhook")
 def ping():
-    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS), build=BUILD_TAG)
+    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS), build=BUILD_TAG, bot=bool(BOT_API))
 
-# ========= نفس الهاندلر، لكن هنعرّفه كدالة داخلية ونربطه بأكثر من مسار =========
+# ================== Webhook core ==================
 def _handle_webhook():
     try:
+        # التوكن جوّا try عشان ما نرميش 500 أبداً
         if not BOT_API:
             print("[ERR] Missing TELEGRAM_BOT_TOKEN")
-            # رجّع 200 عشان تيليجرام مايعيدش نفس الـ update
             return jsonify({"ok": True, "warn": "Missing TELEGRAM_BOT_TOKEN"}), 200
 
-    try:
         update = request.get_json(force=True, silent=True) or {}
         try:
             print("[UPDATE]", json.dumps(update)[:2000])
@@ -340,7 +333,7 @@ def _handle_webhook():
 
             return jsonify({"ok": True})
 
-        # ===== normal messages =====
+        # ===== normal text messages =====
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
@@ -367,15 +360,13 @@ def _handle_webhook():
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
-        # أهم نقطة: رجّع 200 حتى مع الخطأ لتمنع retries من Telegram
         return jsonify({"ok": True}), 200
 
-# ◀︎◀︎ هنا الإضافة الأساسية
+# ================== Routes ==================
 @app.post("/api/webhook")
 def webhook_api():
     return _handle_webhook()
 
-# لالتقاط أي POST أخرى أيضاً (احتياطيًا)
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook_catchall(subpath=None):
