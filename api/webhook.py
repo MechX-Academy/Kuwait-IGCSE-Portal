@@ -238,10 +238,8 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
 def ping():
     return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS), build=BUILD_TAG)
 
-# ================== Webhook ==================
-@app.route("/", defaults={"subpath": ""}, methods=["POST"])
-@app.route("/<path:subpath>", methods=["POST"])
-def webhook(subpath=None):
+# ========= نفس الهاندلر، لكن هنعرّفه كدالة داخلية ونربطه بأكثر من مسار =========
+def _handle_webhook():
     if not BOT_API:
         return jsonify({"ok": False, "error": "Missing TELEGRAM_BOT_TOKEN"}), 500
 
@@ -261,7 +259,6 @@ def webhook(subpath=None):
 
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
-            # لو الرسالة تحولت بالفعل لنتيجة، تجاهل ضغطات متأخرة
             if (cq.get("message", {}).get("text") or "").startswith("Thanks!"):
                 return jsonify({"ok": True})
 
@@ -275,14 +272,12 @@ def webhook(subpath=None):
                 else:
                     tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
 
-            # Step 1 -> Step 2
             if data.startswith("B|"):
                 b = data.split("|", 1)[1]
                 edit(text="*Step 2/3 – Grade*\nSelect your child's current grade:",
                      reply_markup=kb_grade(b), parse_mode="Markdown")
                 return jsonify({"ok": True})
 
-            # Step 2 -> Step 3
             if data.startswith("G|"):
                 _, g, b = data.split("|", 2)
                 g = int(g)
@@ -292,7 +287,6 @@ def webhook(subpath=None):
                      parse_mode="Markdown")
                 return jsonify({"ok": True})
 
-            # Toggle subject
             if data.startswith("T|"):
                 _, code, b, g, enc = data.split("|", 4)
                 g = int(g)
@@ -307,7 +301,6 @@ def webhook(subpath=None):
                      parse_mode="Markdown")
                 return jsonify({"ok": True})
 
-            # Done -> رسالة واحدة (edit فقط لنفس الرسالة)
             if data.startswith("D|"):
                 _, b, g, enc = data.split("|", 3)
                 g = int(g)
@@ -324,7 +317,6 @@ def webhook(subpath=None):
                     print(f"[SKIP] duplicate done {signature}")
                     return jsonify({"ok": True})
 
-                # اقفل الكيبورد
                 tg("editMessageReplyMarkup", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "reply_markup": {"inline_keyboard": []}
@@ -345,7 +337,7 @@ def webhook(subpath=None):
 
             return jsonify({"ok": True})
 
-        # ===== normal text messages =====
+        # ===== normal messages =====
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
@@ -362,7 +354,6 @@ def webhook(subpath=None):
             })
             return jsonify({"ok": True})
 
-        # أي رسالة خارج الفلو:
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the guided flow 👇",
@@ -371,7 +362,18 @@ def webhook(subpath=None):
         return jsonify({"ok": True})
 
     except Exception as e:
-        # رجع 200 حتى لو في خطأ علشان تمنع retries/تكرار من تيليجرام
         print("[ERR]", repr(e))
         print(traceback.format_exc())
+        # أهم نقطة: رجّع 200 حتى مع الخطأ لتمنع retries من Telegram
         return jsonify({"ok": True}), 200
+
+# ◀︎◀︎ هنا الإضافة الأساسية
+@app.post("/api/webhook")
+def webhook_api():
+    return _handle_webhook()
+
+# لالتقاط أي POST أخرى أيضاً (احتياطيًا)
+@app.route("/", defaults={"subpath": ""}, methods=["POST"])
+@app.route("/<path:subpath>", methods=["POST"])
+def webhook_catchall(subpath=None):
+    return _handle_webhook()
