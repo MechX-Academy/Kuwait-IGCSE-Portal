@@ -1,4 +1,4 @@
-import os, json, re
+import os, json, re, time, traceback, html
 from typing import Dict, Any, List, Tuple, Set
 from flask import Flask, request, jsonify
 import requests
@@ -6,10 +6,33 @@ from rapidfuzz import fuzz
 
 app = Flask(__name__)
 
+BUILD_TAG = "portal-no-repeats-html-v2"
+
+# ---------- Telegram ----------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
+
+def tg(method: str, payload: Dict[str, Any]):
+    """Telegram call with logging; never crash."""
+    if not BOT_API:
+        print("[TG] BOT_API missing; skip", method)
+        return None
+    try:
+        r = requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
+        try:
+            j = r.json()
+        except Exception:
+            j = {}
+        if r.status_code != 200 or (isinstance(j, dict) and not j.get("ok", True)):
+            print(f"[TG ERR] {method} {r.status_code} -> {r.text[:800]}")
+        else:
+            print(f"[TG OK] {method}")
+        return r
+    except Exception as e:
+        print("[TG EXC]", method, repr(e))
+        return None
 
 # ---------- data ----------
 DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
@@ -47,7 +70,7 @@ VALID_SUBJECTS = {
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
 }
 
-# short codes for multi-select keyboards (keep payload under 64 bytes)
+# short codes for multi-select keyboards
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
         ("MTH", "Mathematics"),
@@ -104,33 +127,11 @@ CODE_TO_SUBJECT = {
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}  # "Oxford" → OxfordAQA
 
 # ---------- helpers ----------
+def h(x: str) -> str:
+    return html.escape(x or "")
+
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
-
-def tg(method: str, payload: Dict[str, Any]):
-    if not BOT_API: return None
-    return requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
-
-def extract_grade(text: str):
-    m = re.search(r"(grade|yr|year)\s*(\d{1,2})", text, re.I)
-    if m:
-        g = int(m.group(2))
-        if 1 <= g <= 13: return g
-    m2 = re.search(r"\b(\d{1,2})\b", text)
-    if m2:
-        g2 = int(m2.group(1))
-        if 1 <= g2 <= 13: return g2
-    return None
-
-def extract_subject(text: str):
-    t = _norm(text)
-    best, best_score = None, 0
-    for canonical, aliases in VALID_SUBJECTS.items():
-        for a in [canonical] + aliases:
-            sc = fuzz.partial_ratio(a, t)
-            if sc > best_score:
-                best_score, best = sc, canonical
-    return best.title() if best_score >= 70 else None
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
     scored = []
@@ -141,7 +142,8 @@ def match_teachers(subject=None, grade=None, board=None, limit=4):
             if any(_norm(subject) == _norm(s) for s in t.get("subjects", [])):
                 score += 60
             else:
-                best_sub = max((fuzz.partial_ratio(subject.lower(), s.lower()) for s in t.get("subjects", [])), default=0)
+                best_sub = max((fuzz.partial_ratio(subject.lower(), s.lower())
+                               for s in t.get("subjects", [])), default=0)
                 score += best_sub * 0.3
         # grade
         if grade and t.get("grades"):
@@ -155,8 +157,58 @@ def match_teachers(subject=None, grade=None, board=None, limit=4):
     scored.sort(key=lambda x: x[0], reverse=True)
     return [t for sc, t in scored[:limit] if sc > 30]
 
+def format_teacher_line(t: Dict[str, Any]) -> str:
+    quals = ", ".join(t.get("qualifications", []))
+    boards = ", ".join(t.get("boards", []))
+    grades = ""
+    if t.get("grades"):
+        gmin, gmax = min(t["grades"]), max(t["grades"])
+        grades = f"Grades {gmin}-{gmax}"
+    contact = t.get("contact", {})
+    wa = contact.get("whatsapp") or ""
+    whatsapp = f'<a href="{h(wa)}">WhatsApp</a>' if wa else ""
+    photo_url = t.get("photo_url") or ""
+    photo = f'<a href="{h(photo_url)}">Photo</a>' if photo_url else ""
+
+    lines = [
+        f"<b>{h(t['name'])}</b> — {h(', '.join(t.get('subjects', [])))}",
+        "  " + " | ".join([x for x in [h(grades), f"Boards {h(boards)}" if boards else ""] if x]),
+    ]
+    if t.get("bio"):      lines.append("  " + h(t["bio"]))
+    if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
+    if photo or whatsapp: lines.append("  " + " • ".join([x for x in [photo, whatsapp] if x]))
+    return "\n".join(lines)
+
+def build_final_message(board: str, grade: int, subjects: List[str], matches: List[Dict[str, Any]]) -> str:
+    header = (f"Thanks! Here are the best matches for:\n"
+              f"Board: <b>{h(board)}</b> | Grade: <b>{grade}</b>\n"
+              f"Subjects: <b>{h(', '.join(subjects))}</b>")
+    body = []
+    if matches:
+        for i, t in enumerate(matches, 1):
+            body.append(f"\n<b>{i})</b> " + format_teacher_line(t))
+    else:
+        body.append("\nSorry, no exact matches right now. We’ll expand the search and get back to you.")
+    top_preview = ""
+    if matches and matches[0].get("photo_url"):
+        # bare URL first line for Telegram preview
+        top_preview = h(matches[0]["photo_url"]) + "\n\n"
+    return top_preview + header + "\n" + "\n".join(body)
+
+def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
+    seen, out = set(), []
+    for s in subjects:
+        for t in match_teachers(s, grade, board, limit=3):
+            tid = t.get("id") or t["name"]
+            if tid in seen:
+                continue
+            seen.add(tid)
+            out.append(t)
+            if len(out) >= k:
+                return out
+    return out
+
 # ----- state encoding inside callback_data (no DB needed) -----
-# formats:
 #  B|C                    -> choose Board (C/E/O)
 #  G|8|C                  -> choose Grade (7..12) + keep Board
 #  T|MTH|C|8|MTH.ENL      -> toggle Subject code (add/remove) with current state
@@ -188,7 +240,6 @@ def kb_subjects(board_code: str, grade: int, sel: Set[str]):
     rows = []
     def tick(code): return "✅" if code in sel else "☐"
     for group, items in SUBJECT_GROUPS.items():
-        # group header (non-pressable)
         rows.append([{"text": f"— {group} —", "callback_data": "noop"}])
         for i in range(0, len(items), 2):
             row = []
@@ -207,146 +258,162 @@ def kb_subjects(board_code: str, grade: int, sel: Set[str]):
 
 def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
     board = BOARD_CODES.get(board_code, board_code)
-    chosen = ", ".join(CODE_TO_SUBJECT[c] for c in sorted(sel)) if sel else "—"
-    return (f"*Step 3/3 – Subjects*\n"
-            f"Board: *{board}*   |   Grade: *{grade}*\n"
-            f"Pick one or more subjects, then press *Done*.\n"
+    chosen = ", ".join(h(CODE_TO_SUBJECT[c]) for c in sorted(sel)) if sel else "—"
+    return (f"<b>Step 3/3 – Subjects</b>\n"
+            f"Board: <b>{h(board)}</b>   |   Grade: <b>{grade}</b>\n"
+            f"Pick one or more subjects, then press <b>Done</b>.\n"
             f"Selected: {chosen}")
+
+# ---------- Idempotency (prevent repeats) ----------
+RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
+def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
+    now = time.time()
+    lst = RECENT_DONE.get(chat_id, [])
+    lst = [(k, t) for (k, t) in lst if now - t < ttl]
+    RECENT_DONE[chat_id] = lst
+    for k, _ in lst:
+        if k == signature:
+            return True
+    lst.append((signature, now))
+    RECENT_DONE[chat_id] = lst
+    return False
 
 # ---------- routes ----------
 @app.get("/api/webhook")
 def ping():
-    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS))
+    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS), build=BUILD_TAG, bot=bool(BOT_API))
 
-@app.route("/", defaults={"subpath": ""}, methods=["POST"])
-@app.route("/<path:subpath>", methods=["POST"])
-def webhook(subpath=None):
-    if not BOT_API:
-        return jsonify({"ok": False, "error": "Missing TELEGRAM_BOT_TOKEN"}), 500
+def _handle_webhook():
+    try:
+        if not BOT_API:
+            print("[ERR] Missing TELEGRAM_BOT_TOKEN")
+            return jsonify({"ok": True, "warn": "Missing TELEGRAM_BOT_TOKEN"}), 200
 
-    update = request.get_json(force=True, silent=True) or {}
+        update = request.get_json(force=True, silent=True) or {}
+        try:
+            print("[UPDATE]", json.dumps(update)[:2000])
+        except Exception:
+            print("[UPDATE] (non-serializable)")
 
-    # 1) handle button presses
-    if "callback_query" in update:
-        cq = update["callback_query"]
-        chat_id = cq["message"]["chat"]["id"]
-        msg_id  = cq["message"]["message_id"]
-        data = cq.get("data","")
+        # 1) handle button presses
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            chat_id = cq["message"]["chat"]["id"]
+            msg_id  = cq["message"]["message_id"]
+            data = cq.get("data","")
 
-        def edit(text=None, reply_markup=None, parse_mode=None):
-            payload = {"chat_id": chat_id, "message_id": msg_id}
-            if text is not None: payload["text"] = text
-            if reply_markup is not None: payload["reply_markup"] = reply_markup
-            if parse_mode: payload["parse_mode"] = parse_mode
-            tg("editMessageText", payload) if text is not None else tg("editMessageReplyMarkup", payload)
+            # Always ack quickly to avoid Telegram retry
+            tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
-        # B|C
-        if data.startswith("B|"):
-            b = data.split("|", 1)[1]
-            edit(text="*Step 2/3 – Grade*\nSelect your child's current grade:",
-                 reply_markup=kb_grade(b), parse_mode="Markdown")
-            return jsonify({"ok": True})
-
-        # G|8|C
-        if data.startswith("G|"):
-            _, g, b = data.split("|", 2)
-            g = int(g)
-            sel = set()
-            edit(text=summary_text(b, g, sel),
-                 reply_markup=kb_subjects(b, g, sel),
-                 parse_mode="Markdown")
-            return jsonify({"ok": True})
-
-        # T|CODE|C|8|MTH.ENL
-        if data.startswith("T|"):
-            _, code, b, g, enc = data.split("|", 4)
-            g = int(g)
-            sel = decode_sel(enc)
-            if code == "__RESET__": sel = set()
-            else:
-                if code in sel: sel.remove(code)
-                else: sel.add(code)
-            edit(text=summary_text(b, g, sel),
-                 reply_markup=kb_subjects(b, g, sel),
-                 parse_mode="Markdown")
-            return jsonify({"ok": True})
-
-        # D|C|8|MTH.ENL
-        if data.startswith("D|"):
-            _, b, g, enc = data.split("|", 3)
-            g = int(g)
-            sel = decode_sel(enc)
-            board = BOARD_CODES.get(b, b)
-            subjects = [CODE_TO_SUBJECT[c] for c in sel]
-
-            if not subjects:
-                tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+            # after we turned message into final "Thanks!" ignore late taps
+            if (cq.get("message", {}).get("text") or "").startswith("Thanks!"):
                 return jsonify({"ok": True})
 
-            # confirm
-            conf = ("Thanks! Here are the best matches for:\n"
-                    f"Board: *{board}* | Grade: *{g}*\n"
-                    f"Subjects: *{', '.join(subjects)}*")
-            tg("editMessageText", {
-                "chat_id": chat_id, "message_id": msg_id,
-                "text": conf, "parse_mode": "Markdown"
-            })
+            def edit(text=None, reply_markup=None, parse_mode=None, disable_preview=None):
+                if text is not None:
+                    payload = {"chat_id": chat_id, "message_id": msg_id, "text": text}
+                    if reply_markup is not None: payload["reply_markup"] = reply_markup
+                    if parse_mode: payload["parse_mode"] = parse_mode
+                    if disable_preview is not None: payload["disable_web_page_preview"] = disable_preview
+                    tg("editMessageText", payload)
+                else:
+                    tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
 
-            # send results per subject
-            for s in subjects:
-                results = match_teachers(s, g, board, limit=4)
-                head = f"— *{s}* —"
-                tg("sendMessage", {"chat_id": chat_id, "text": head, "parse_mode": "Markdown"})
-                if not results:
-                    tg("sendMessage", {"chat_id": chat_id, "text": "No exact matches right now. We'll expand the search and get back to you."})
-                    continue
-                for t in results:
-                    tg("sendMessage", {
-                        "chat_id": chat_id,
-                        "text": format_teacher_card(t),
-                        "parse_mode": "Markdown",
-                        "disable_web_page_preview": True
-                    })
-                    if t.get("photo_url"):
-                        tg("sendPhoto", {"chat_id": chat_id, "photo": t["photo_url"]})
-            tg("sendMessage", {"chat_id": chat_id,
-                               "text": "You can contact any tutor via the WhatsApp link on each card. 🌟"})
+            if data == "noop":
+                return jsonify({"ok": True})
+
+            # B|C
+            if data.startswith("B|"):
+                b = data.split("|", 1)[1]
+                edit(text="<b>Step 2/3 – Grade</b>\nSelect your child's current grade:",
+                     reply_markup=kb_grade(b), parse_mode="HTML")
+                return jsonify({"ok": True})
+
+            # G|8|C
+            if data.startswith("G|"):
+                _, g, b = data.split("|", 2)
+                g = int(g)
+                sel = set()
+                edit(text=summary_text(b, g, sel),
+                     reply_markup=kb_subjects(b, g, sel),
+                     parse_mode="HTML")
+                return jsonify({"ok": True})
+
+            # T|CODE|C|8|MTH.ENL
+            if data.startswith("T|"):
+                _, code, b, g, enc = data.split("|", 4)
+                g = int(g)
+                sel = decode_sel(enc)
+                if code == "__RESET__": sel = set()
+                else:
+                    if code in sel: sel.remove(code)
+                    else: sel.add(code)
+                edit(text=summary_text(b, g, sel),
+                     reply_markup=kb_subjects(b, g, sel),
+                     parse_mode="HTML")
+                return jsonify({"ok": True})
+
+            # D|C|8|MTH.ENL  -> FINAL single message (edit same msg)
+            if data.startswith("D|"):
+                _, b, g, enc = data.split("|", 3)
+                g = int(g)
+                sel = decode_sel(enc)
+                board = BOARD_CODES.get(b, b)
+                subjects = sorted({CODE_TO_SUBJECT[c] for c in sel})
+
+                if not subjects:
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+                    return jsonify({"ok": True})
+
+                # idempotency across retries/instances
+                signature = f"{msg_id}|{b}|{g}|{'.'.join(sorted(sel))}"
+                if already_done(chat_id, signature):
+                    print(f"[SKIP] duplicate done {signature}")
+                    return jsonify({"ok": True})
+
+                # Close keyboard first
+                tg("editMessageReplyMarkup", {
+                    "chat_id": chat_id,
+                    "message_id": msg_id,
+                    "reply_markup": {"inline_keyboard": []}
+                })
+
+                matches = collect_best_matches(subjects, g, board, k=4)
+                final_text = build_final_message(board, g, subjects, matches)
+
+                print(f"[DONE] chat={chat_id} msg={msg_id} board={board} grade={g} subjects={subjects} matches={len(matches)}")
+
+                # ONE final message: edit same message (no extra sends)
+                tg("editMessageText", {
+                    "chat_id": chat_id,
+                    "message_id": msg_id,
+                    "text": final_text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": False  # allow photo preview
+                })
+                return jsonify({"ok": True})
+
+            # ignore others
             return jsonify({"ok": True})
 
-        # ignore
-        return jsonify({"ok": True})
+        # 2) handle normal messages (/start or free text)
+        msg = update.get("message") or update.get("edited_message")
+        if not msg:
+            return jsonify({"ok": True})
 
-    # 2) handle normal messages (/start or free text)
-    msg = update.get("message") or update.get("edited_message")
-    if not msg:
-        return jsonify({"ok": True})
+        chat_id = msg["chat"]["id"]
+        text = (msg.get("text") or "").strip()
 
-    chat_id = msg["chat"]["id"]
-    text = (msg.get("text") or "").strip()
+        if text.lower() in ("/start", "start"):
+            tg("sendMessage", {
+                "chat_id": chat_id,
+                "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum does your child follow?",
+                "parse_mode": "HTML",
+                "reply_markup": kb_board()
+            })
+            return jsonify({"ok": True})
 
-    if text.lower() in ("/start", "start"):
-        tg("sendMessage", {
-            "chat_id": chat_id,
-            "text": "*Step 1/3 – Board*\nWhich board or curriculum does your child follow?",
-            "parse_mode": "Markdown",
-            "reply_markup": kb_board()
-        })
-        return jsonify({"ok": True})
-
-    # fallback: user typed free text → try to parse & reply
-    # extract subject/grade/board heuristically (kept from previous behaviour)
-    def extract_board_from_text(t: str):
-        t = _norm(t)
-        if "cambridge" in t or "caie" in t or "cie" in t: return "Cambridge"
-        if "edexcel" in t or "pearson" in t: return "Edexcel"
-        if "oxford" in t or "aqa" in t: return "OxfordAQA"
-        return None
-
-    found_board = extract_board_from_text(text)
-    found_grade = extract_grade(text)
-    found_subject = extract_subject(text)
-
-    if not (found_board and found_grade):
+        # fallback: point to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the guided flow 👇",
@@ -354,13 +421,19 @@ def webhook(subpath=None):
         })
         return jsonify({"ok": True})
 
-    results = match_teachers(found_subject, found_grade, found_board, limit=4)
-    if not results:
-        tg("sendMessage", {"chat_id": chat_id, "text": "No exact matches right now. Try another subject/board."})
-        return jsonify({"ok": True})
-    for t in results:
-        tg("sendMessage", {"chat_id": chat_id, "text": format_teacher_card(t),
-                           "parse_mode": "Markdown", "disable_web_page_preview": True})
-        if t.get("photo_url"):
-            tg("sendPhoto", {"chat_id": chat_id, "photo": t["photo_url"]})
-    return jsonify({"ok": True})
+    except Exception as e:
+        print("[ERR]", repr(e))
+        print(traceback.format_exc())
+        # return 200 to prevent Telegram retries & duplicates
+        return jsonify({"ok": True}), 200
+
+# Explicit route (Vercel webhook)
+@app.post("/api/webhook")
+def webhook_api():
+    return _handle_webhook()
+
+# Catch-all (safety)
+@app.route("/", defaults={"subpath": ""}, methods=["POST"])
+@app.route("/<path:subpath>", methods=["POST"])
+def webhook_catchall(subpath=None):
+    return _handle_webhook()
