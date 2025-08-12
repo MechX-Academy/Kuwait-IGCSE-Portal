@@ -31,109 +31,55 @@ except Exception as e:
     print(f"ERROR loading teachers.json from {DATA_PATH}: {e}")
     TEACHERS = []
 
+# subjects for parsing/matching (مش واجب تظهر كلها في الـ UI)
 VALID_SUBJECTS = {
     "math": ["math", "mathematics", "additional math", "further math"],
-    "physics": ["physics", "phys"],
-    "chemistry": ["chemistry", "chem"],
+    "physics": ["physics", "phys"], "chemistry": ["chemistry", "chem"],
     "biology": ["biology", "bio"],
     "english language": ["english", "english language", "esl", "first language english", "second language english"],
     "english literature": ["english literature", "literature"],
     "computer science": ["computer science", "cs"],
     "ict": ["ict", "information and communication technology"],
     "business": ["business", "business studies"],
-    "economics": ["economics", "econ"],
-    "accounting": ["accounting", "accounts"],
-    "geography": ["geography", "geo"],
-    "history": ["history"],
+    "economics": ["economics", "econ"], "accounting": ["accounting", "accounts"],
+    "geography": ["geography", "geo"], "history": ["history"],
     "arabic": ["arabic", "arabic first language", "arabic foreign language"],
-    "french": ["french"],
-    "german": ["german"],
-    "spanish": ["spanish"],
-    "sociology": ["sociology"],
-    "humanities & social sciences": ["humanities", "social sciences"],
+    "french": ["french"], "german": ["german"], "spanish": ["spanish"],
+    "sociology": ["sociology"], "humanities & social sciences": ["humanities", "social sciences"],
     "environmental management": ["environmental management", "em"],
     "physical education": ["pe", "physical education"],
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
 }
 
+# UI subject groups (codes قصيرة علشان callback_data)
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
-        ("MTH", "Mathematics"),
-        ("ENL", "English Language"),
-        ("ENLIT", "English Literature"),
-        ("BIO", "Biology"),
-        ("CHE", "Chemistry"),
-        ("PHY", "Physics"),
-        ("HUM", "Humanities & Social Sciences"),
-        ("BUS", "Business Studies"),
-        ("ECO", "Economics"),
-        ("ACC", "Accounting"),
-        ("SOC", "Sociology"),
+        ("MTH", "Mathematics"), ("ENL", "English Language"),
+        ("ENLIT", "English Literature"), ("BIO", "Biology"),
+        ("CHE", "Chemistry"), ("PHY", "Physics"),
+        ("HUM", "Humanities & Social Sciences"), ("BUS", "Business Studies"),
+        ("ECO", "Economics"), ("ACC", "Accounting"), ("SOC", "Sociology"),
     ],
-    "Languages": [
-        ("FR", "French"),
-        ("DE", "German"),
-        ("AR", "Arabic (First or Second Language)"),
-    ],
-    "Creative & Technical": [
-        ("ICT", "Information & Communication Technology (ICT)"),
-        ("CS",  "Computer Science"),
-    ],
-    "Other options": [
-        ("EM", "Environmental Management"),
-        ("PE", "Physical Education (PE)"),
-        ("TT", "Travel & Tourism"),
-    ],
+    "Languages": [("FR", "French"), ("DE", "German"), ("AR", "Arabic (First or Second Language)")],
+    "Creative & Technical": [("ICT", "Information & Communication Technology (ICT)"), ("CS", "Computer Science")],
+    "Other options": [("EM", "Environmental Management"), ("PE", "Physical Education (PE)"), ("TT", "Travel & Tourism")],
 }
 
 CODE_TO_SUBJECT = {
-    "MTH": "Math",
-    "ENL": "English Language",
-    "ENLIT": "English Literature",
-    "BIO": "Biology",
-    "CHE": "Chemistry",
-    "PHY": "Physics",
-    "HUM": "Humanities & Social Sciences",
-    "BUS": "Business",
-    "ECO": "Economics",
-    "ACC": "Accounting",
-    "SOC": "Sociology",
-    "FR": "French",
-    "DE": "German",
-    "AR": "Arabic",
-    "ICT": "ICT",
-    "CS": "Computer Science",
-    "EM": "Environmental Management",
-    "PE": "Physical Education",
-    "TT": "Travel & Tourism",
+    "MTH": "Math", "ENL": "English Language", "ENLIT": "English Literature",
+    "BIO": "Biology", "CHE": "Chemistry", "PHY": "Physics",
+    "HUM": "Humanities & Social Sciences", "BUS": "Business",
+    "ECO": "Economics", "ACC": "Accounting", "SOC": "Sociology",
+    "FR": "French", "DE": "German", "AR": "Arabic",
+    "ICT": "ICT", "CS": "Computer Science",
+    "EM": "Environmental Management", "PE": "Physical Education", "TT": "Travel & Tourism",
 }
 
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
-# --- helpers ---
+# ---------- helpers ----------
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
-
-def extract_grade(text: str):
-    m = re.search(r"(grade|yr|year)\s*(\d{1,2})", text, re.I)
-    if m:
-        g = int(m.group(2))
-        if 1 <= g <= 13: return g
-    m2 = re.search(r"\b(\d{1,2})\b", text)
-    if m2:
-        g2 = int(m2.group(1))
-        if 1 <= g2 <= 13: return g2
-    return None
-
-def extract_subject(text: str):
-    t = _norm(text)
-    best, best_score = None, 0
-    for canonical, aliases in VALID_SUBJECTS.items():
-        for a in [canonical] + aliases:
-            sc = fuzz.partial_ratio(a, t)
-            if sc > best_score:
-                best_score, best = sc, canonical
-    return best.title() if best_score >= 70 else None
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
     scored = []
@@ -186,10 +132,7 @@ def kb_subjects(board_code: str, grade: int, sel: Set[str]):
         for i in range(0, len(items), 2):
             row = []
             for code, label in items[i:i+2]:
-                row.append({
-                    "text": f"{tick(code)} {label}",
-                    "callback_data": f"T|{code}|{board_code}|{grade}|{encode_sel(sel)}"
-                })
+                row.append({"text": f"{tick(code)} {label}", "callback_data": f"T|{code}|{board_code}|{grade}|{encode_sel(sel)}"})
             rows.append(row)
     rows.append([
         {"text": "Done ✅", "callback_data": f"D|{board_code}|{grade}|{encode_sel(sel)}"},
@@ -206,10 +149,8 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press *Done*.\n"
             f"Selected: {chosen}")
 
-# --------- DEDUPE (anti-duplicate) ----------
-# Keep last selections per chat for 60s to ignore Telegram retries
+# --------- DEDUPE (لمنع التكرار عبر retries) ----------
 RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
-
 def already_done(chat_id: int, signature: str, ttl: int = 60) -> bool:
     now = time.time()
     lst = RECENT_DONE.get(chat_id, [])
@@ -222,12 +163,60 @@ def already_done(chat_id: int, signature: str, ttl: int = 60) -> bool:
     RECENT_DONE[chat_id] = lst
     return False
 
-# --- health ---
+# --------- Helpers to build ONE final message ----------
+def format_teacher_line(t: Dict[str, Any]) -> str:
+    quals = ", ".join(t.get("qualifications", []))
+    boards = ", ".join(t.get("boards", []))
+    grades = ""
+    if t.get("grades"):
+        gmin, gmax = min(t["grades"]), max(t["grades"])
+        grades = f"Grades {gmin}-{gmax}"
+    contact = t.get("contact", {})
+    wa = contact.get("whatsapp") or ""
+    whatsapp = f"[WhatsApp]({wa})" if wa else ""
+    photo_url = t.get("photo_url") or ""
+    photo = f"[Photo]({photo_url})" if photo_url else ""
+
+    parts = [
+        f"*{t['name']}* — {', '.join(t.get('subjects', []))}",
+        "  " + " | ".join([x for x in [grades, f"Boards {boards}" if boards else ""] if x]),
+    ]
+    if t.get("bio"):        parts.append("  " + t["bio"])
+    if quals:               parts.append("  " + f"Qualifications: {quals}")
+    if photo or whatsapp:   parts.append("  " + " • ".join([x for x in [photo, whatsapp] if x]))
+    return "\n".join(parts)
+
+def build_final_message(board: str, grade: int, subjects: List[str], matches: List[Dict[str, Any]]) -> str:
+    header = (f"Thanks! Here are the best matches for:\n"
+              f"Board: *{board}* | Grade: *{grade}*\n"
+              f"Subjects: *{', '.join(subjects)}*")
+    body_lines = []
+    if matches:
+        for i, t in enumerate(matches, 1):
+            body_lines.append(f"\n*{i})* " + format_teacher_line(t))
+    else:
+        body_lines.append("\nSorry, no exact matches right now. We’ll expand the search and get back to you.")
+    return header + "\n" + "\n".join(body_lines)
+
+def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
+    seen, out = set(), []
+    for s in subjects:
+        for t in match_teachers(s, grade, board, limit=3):
+            tid = t.get("id") or t["name"]
+            if tid in seen: 
+                continue
+            seen.add(tid)
+            out.append(t)
+            if len(out) >= k:
+                return out
+    return out
+
+# --------- health ----------
 @app.get("/api/webhook")
 def ping():
     return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS))
 
-# --- webhook ---
+# --------- webhook ----------
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook(subpath=None):
@@ -236,35 +225,38 @@ def webhook(subpath=None):
 
     update = request.get_json(force=True, silent=True) or {}
 
-    # callbacks
+    # ===== callback buttons =====
     if "callback_query" in update:
         cq = update["callback_query"]
         chat_id = cq["message"]["chat"]["id"]
         msg_id  = cq["message"]["message_id"]
         data = cq.get("data", "")
 
-        # ack immediately to prevent retries
+        # ack بسرعة علشان تيليجرام ما يعيدش الrequest
         tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
-        # ignore late retries after we've converted message to Thanks
+        # لو الرسالة اتحولت لThanks خلاص تجاهل أي retries قديمة
         if cq["message"].get("text", "").startswith("Thanks!"):
             return jsonify({"ok": True})
 
-        def edit(text=None, reply_markup=None, parse_mode=None):
+        def edit(text=None, reply_markup=None, parse_mode=None, disable_preview=None):
             if text is not None:
                 payload = {"chat_id": chat_id, "message_id": msg_id, "text": text}
                 if parse_mode: payload["parse_mode"] = parse_mode
                 if reply_markup is not None: payload["reply_markup"] = reply_markup
+                if disable_preview is not None: payload["disable_web_page_preview"] = disable_preview
                 tg("editMessageText", payload)
             else:
                 tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
 
+        # Step 1 -> Step 2
         if data.startswith("B|"):
             b = data.split("|", 1)[1]
             edit(text="*Step 2/3 – Grade*\nSelect your child's current grade:",
                  reply_markup=kb_grade(b), parse_mode="Markdown")
             return jsonify({"ok": True})
 
+        # Step 2 -> Step 3
         if data.startswith("G|"):
             _, g, b = data.split("|", 2)
             g = int(g)
@@ -274,6 +266,7 @@ def webhook(subpath=None):
                  parse_mode="Markdown")
             return jsonify({"ok": True})
 
+        # Toggle subject
         if data.startswith("T|"):
             _, code, b, g, enc = data.split("|", 4)
             g = int(g)
@@ -288,6 +281,7 @@ def webhook(subpath=None):
                  parse_mode="Markdown")
             return jsonify({"ok": True})
 
+        # Done: نحرر نفس الرسالة إلى نتيجة نهائية واحدة فقط
         if data.startswith("D|"):
             _, b, g, enc = data.split("|", 3)
             g = int(g)
@@ -299,54 +293,34 @@ def webhook(subpath=None):
                 tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
                 return jsonify({"ok": True})
 
-            # dedupe key
+            # dedupe عبر retries/instances مختلفة
             signature = f"{b}|{g}|{'.'.join(sorted(sel))}"
             if already_done(chat_id, signature):
                 return jsonify({"ok": True})
 
-            # remove keyboard to block further presses
+            # اشطب الكيبورد فورًا
             tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id,
                                           "reply_markup": {"inline_keyboard": []}})
 
-            conf = ("Thanks! Here are the best matches for:\n"
-                    f"Board: *{board}* | Grade: *{g}*\n"
-                    f"Subjects: *{', '.join(subjects)}*")
-            tg("editMessageText", {
-                "chat_id": chat_id, "message_id": msg_id,
-                "text": conf, "parse_mode": "Markdown"
-            })
+            matches = collect_best_matches(subjects, g, board, k=4)
+            final_text = build_final_message(board, g, subjects, matches)
 
-            for s in subjects:
-                results = match_teachers(s, g, board, limit=4)
-                tg("sendMessage", {"chat_id": chat_id, "text": f"— *{s}* —", "parse_mode": "Markdown"})
-                if not results:
-                    tg("sendMessage", {"chat_id": chat_id,
-                                       "text": "No exact matches right now. We'll expand the search and get back to you."})
-                    continue
-                for t in results:
-                    tg("sendMessage", {
-                        "chat_id": chat_id,
-                        "text": format_teacher_card(t),
-                        "parse_mode": "Markdown",
-                        "disable_web_page_preview": True
-                    })
-                    if t.get("photo_url"):
-                        tg("sendPhoto", {"chat_id": chat_id, "photo": t["photo_url"]})
-            tg("sendMessage", {"chat_id": chat_id,
-                               "text": "You can contact any tutor via the WhatsApp link on each card. 🌟"})
+            # رسالة واحدة فقط (تحرير نفس الرسالة) + بنسيب الـ preview شغال عشان لينك الصورة يطلع
+            edit(text=final_text, parse_mode="Markdown", disable_preview=False)
+
             return jsonify({"ok": True})
 
         return jsonify({"ok": True})
 
-    # messages
+    # ===== normal messages =====
     msg = update.get("message") or update.get("edited_message")
     if not msg:
         return jsonify({"ok": True})
 
     chat_id = msg["chat"]["id"]
-    text = (msg.get("text") or "").strip()
+    text = (msg.get("text") or "").strip().lower()
 
-    if text.lower() in ("/start", "start"):
+    if text in ("/start", "start"):
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "*Step 1/3 – Board*\nWhich board or curriculum does your child follow?",
