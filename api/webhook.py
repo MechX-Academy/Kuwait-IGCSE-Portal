@@ -1,23 +1,25 @@
 # api/webhook.py
-import os, json, re, time, traceback, html
-from typing import Dict, Any, List, Tuple, Set, Optional
+import os, json, re, time, html, traceback
+from typing import Dict, Any, List, Tuple, Set
 from flask import Flask, request, jsonify
 import requests
-from urllib.parse import quote_plus
+from rapidfuzz import fuzz
+from urllib.parse import quote
 
 app = Flask(__name__)
+BUILD_TAG = "kuwait-igcse-portal-v1.0"
 
-BUILD_TAG = "portal-whatsapp-prefill-v1"
-
-# ---------- Telegram ----------
+# ------------ Telegram basics ------------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
 if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
+
 def tg(method: str, payload: Dict[str, Any]):
+    """Safe Telegram call with light logging."""
     if not BOT_API:
-        print("[TG] BOT_API missing; skip", method)
+        print(f"[TG] skip {method} (no token)")
         return None
     try:
         r = requests.post(f"{BOT_API}/{method}", json=payload, timeout=20)
@@ -26,7 +28,7 @@ def tg(method: str, payload: Dict[str, Any]):
         except Exception:
             j = {}
         if r.status_code != 200 or (isinstance(j, dict) and not j.get("ok", True)):
-            print(f"[TG ERR] {method} {r.status_code} -> {r.text[:800]}")
+            print(f"[TG ERR] {method} {r.status_code} -> {r.text[:500]}")
         else:
             print(f"[TG OK] {method}")
         return r
@@ -34,17 +36,19 @@ def tg(method: str, payload: Dict[str, Any]):
         print("[TG EXC]", method, repr(e))
         return None
 
-# ---------- data ----------
+
+# ------------ Load data ------------
 DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
 try:
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         TEACHERS = json.load(f)
-    print(f"Loaded {len(TEACHERS)} teachers from {DATA_PATH}")
+    print(f"Loaded {len(TEACHERS)} teachers.")
 except Exception as e:
-    print(f"ERROR loading teachers.json from {DATA_PATH}: {e}")
+    print(f"ERROR loading teachers.json: {e}")
     TEACHERS = []
 
-# ---------- subjects / boards ----------
+
+# ------------ Subject dictionaries ------------
 VALID_SUBJECTS = {
     "math": ["math", "mathematics", "additional math", "further math"],
     "physics": ["physics", "phys"],
@@ -124,14 +128,14 @@ CODE_TO_SUBJECT = {
 
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
-# ---------- helpers ----------
+# ------------ Helpers ------------
 def h(x: str) -> str:
     return html.escape(x or "")
 
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
-def canonical_subject(label: str) -> Optional[str]:
+def canonical_subject(label: str) -> str | None:
     t = _norm(label)
     for canonical, aliases in VALID_SUBJECTS.items():
         pool = [canonical] + aliases
@@ -148,7 +152,7 @@ def canonical_subject(label: str) -> Optional[str]:
             return nice.get(key, canonical.title())
     return None
 
-# preprocess normalized subjects per teacher
+# preprocess teacher canonical subjects
 for t in TEACHERS:
     subj = t.get("subjects", [])
     t["_subjects_canon"] = set()
@@ -157,122 +161,83 @@ for t in TEACHERS:
         if c:
             t["_subjects_canon"].add(c)
 
-# ----- preference helpers (optional fields in teachers.json) -----
-def _teacher_modes_for_subject(t: Dict[str, Any], subj: str) -> List[str]:
-    subj_cfg = (t.get("subject_prefs") or {}).get(subj, {})
-    modes = subj_cfg.get("modes") or t.get("modes") or []
-    return [m.strip().lower() for m in modes]
-
-def _teacher_supports_lessons(t: Dict[str, Any], subj: str, lessons: int) -> bool:
-    subj_cfg = (t.get("subject_prefs") or {}).get(subj, {})
-    arr = subj_cfg.get("weekly_lessons_supported") or t.get("weekly_lessons_supported") or []
-    try:
-        return int(lessons) in [int(x) for x in arr]
-    except Exception:
-        return False
-
-def _pref_score(t: Dict[str, Any], subj: Optional[str], mode: Optional[str], lessons: Optional[int]) -> int:
-    s = 0
-    if subj:
-        if mode and mode.strip().lower() in _teacher_modes_for_subject(t, subj):
-            s += 40
-        if lessons and _teacher_supports_lessons(t, subj, lessons):
-            s += 25
-    return s
-
-# ----- matching -----
-def match_teachers(
-    subject: Optional[str] = None,
-    grade: Optional[int] = None,
-    board: Optional[str] = None,
-    prefer_mode: Optional[str] = None,      # "1to1" / "group" / None
-    prefer_lessons: Optional[int] = None,   # 1 / 2 / None
-    strict: bool = False,
-    limit: int = 4
-) -> List[Dict[str, Any]]:
-    results: List[Tuple[int, Dict[str, Any]]] = []
+def match_teachers(subject=None, grade=None, board=None, limit=4):
+    """Strict subject matching; score by grade + board."""
+    results = []
     wanted = canonical_subject(subject) if subject else None
-
     for t in TEACHERS:
         if wanted and wanted not in t.get("_subjects_canon", set()):
             continue
-
-        if strict:
-            if prefer_mode and prefer_mode.strip().lower() not in _teacher_modes_for_subject(t, wanted or ""):
-                continue
-            if (prefer_lessons is not None) and not _teacher_supports_lessons(t, wanted or "", prefer_lessons):
-                continue
-
         score = 0
         if grade and t.get("grades") and grade in t["grades"]:
             score += 50
         if board and t.get("boards") and any(_norm(board) == _norm(b) for b in t["boards"]):
             score += 50
-        score += _pref_score(t, wanted, prefer_mode, prefer_lessons)
-
         results.append((score, t))
-
     results.sort(key=lambda x: x[0], reverse=True)
-    trimmed = [t for sc, t in results if sc > 0] or [t for _, t in results]
+    trimmed = [t for sc, t in results if sc > 0]
+    if not trimmed:
+        trimmed = [t for _, t in results]
     return trimmed[:limit]
 
-# ---------- WhatsApp prefill helpers ----------
-def compose_wa_text(parent: str, board: str, grade: int,
-                    subject: str, mode: Optional[str], lessons: Optional[int],
-                    tutor_name: str) -> str:
-    mode_label = "One-to-one" if (mode or "") == "1to1" else ("Group" if (mode or "") == "group" else "-")
-    parts = [
-        "Hello Kuwait IGCSE Portal 👋",
-        f"Parent: {parent or '-'}",
-        f"Board: {board or '-'}",
-        f"Grade: {grade if grade else '-'}",
-        f"Subject: {subject or '-'}",
-        f"Preference: {mode_label} | {lessons or '-'} per week",
-        f"Tutor selected: {tutor_name or '-'}",
-        "Please connect us. Thanks!"
-    ]
-    return "\n".join(parts)
+def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
+    seen, out = set(), []
+    for s in subjects:
+        for t in match_teachers(s, grade, board, limit=3):
+            tid = t.get("id") or t["name"]
+            if tid in seen: 
+                continue
+            seen.add(tid)
+            out.append(t)
+            if len(out) >= k:
+                return out
+    return out
 
-def build_wa_link(base_url: str, msg: str) -> str:
-    if not base_url:
-        return ""
-    sep = "&" if "?" in base_url else "?"
-    return f"{base_url}{sep}text={quote_plus(msg)}"
+def build_wa_link(t: Dict[str,Any], parent_name: str, board: str, grade: int, subjects: List[str]) -> str:
+    contact = t.get("contact", {}) or {}
+    wa = (contact.get("whatsapp") or contact.get("phone") or "").strip()
+    # normalize to wa.me/NNN
+    if wa.startswith("https://wa.me/"):
+        base = wa
+    else:
+        num = re.sub(r"\D+", "", wa)
+        base = f"https://wa.me/{num}" if num else "https://wa.me/"
+    msg = (
+        f"Hello, this is {parent_name}.\n"
+        f"I'm interested in {t.get('name','the tutor')} for {', '.join(subjects)} "
+        f"(Board: {board}, Grade: {grade}).\n"
+        f"Could you please share availability and fees?"
+    )
+    return f"{base}?text={quote(msg)}"
 
-# ---------- formatting ----------
-def format_teacher_line(t: Dict[str, Any], ctx: Dict[str, Any]) -> str:
-    """HTML caption/body with dynamic WhatsApp link containing the parent's name + choices."""
+def format_teacher_caption_html(t: Dict[str,Any], parent_name: str, board: str, grade: int, subjects: List[str]) -> str:
     quals = ", ".join(t.get("qualifications", []))
     boards = ", ".join(t.get("boards", []))
     grades = ""
     if t.get("grades"):
         gmin, gmax = min(t["grades"]), max(t["grades"])
         grades = f"Grades {gmin}-{gmax}"
-
-    # Build WA prefilled link
-    wa_base = ((t.get("contact") or {}).get("whatsapp") or "").strip()
-    prefill_text = compose_wa_text(
-        parent=str(ctx.get("parent_name") or "").strip(),
-        board=str(ctx.get("board") or ""),
-        grade=int(ctx.get("grade") or 0) if ctx.get("grade") else 0,
-        subject=str(ctx.get("subject") or ""),
-        mode=ctx.get("mode"),
-        lessons=ctx.get("lessons"),
-        tutor_name=t.get("name", "")
-    )
-    wa_link = build_wa_link(wa_base, prefill_text)
-    whatsapp = f'<a href="{h(wa_link)}">WhatsApp</a>' if wa_link else ""
-
+    wa_link = build_wa_link(t, parent_name, board, grade, subjects)
     lines = [
         f"<b>{h(t['name'])}</b> — {h(', '.join(t.get('subjects', [])))}",
         "  " + " | ".join([x for x in [h(grades), f"Boards {h(boards)}" if boards else ""] if x]),
     ]
-    if t.get("bio"):  lines.append("  " + h(t["bio"]))
-    if quals:         lines.append("  " + f"Qualifications: {h(quals)}")
-    if whatsapp:      lines.append("  " + whatsapp)
+    if t.get("bio"):      lines.append("  " + h(t["bio"]))
+    if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
+    lines.append(f'  <a href="{h(wa_link)}">WhatsApp</a>')
     return "\n".join(lines)
 
-# ----- selection encoding in callback_data -----
+def build_overview_text(board: str, grade: int, subjects: List[str], first_photo: str | None) -> str:
+    head = (
+        f"Thanks! Here are the best matches for:\n"
+        f"Board: <b>{h(board)}</b> | Grade: <b>{grade}</b>\n"
+        f"Subjects: <b>{h(', '.join(subjects))}</b>"
+    )
+    if first_photo:
+        return h(first_photo) + "\n\n" + head
+    return head
+
+# ------------ Inline keyboards (board/grade/subjects) ------------
 def encode_sel(sel: Set[str]) -> str:
     return ".".join(sorted(sel)) if sel else ""
 
@@ -324,80 +289,126 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press <b>Done</b>.\n"
             f"Selected: {chosen}")
 
-# ---------- Idempotency ----------
+
+# ------------ Preferences UI (One-to-one/Group + 1/2 per week) ------------
+def pref_text(code: str, board_code: str, grade: int, t_opt: str, w_opt: str) -> str:
+    subject = CODE_TO_SUBJECT.get(code, code)
+    board = BOARD_CODES.get(board_code, board_code)
+    t1 = "✅" if t_opt == "O" else "☐"
+    t2 = "✅" if t_opt == "G" else "☐"
+    w1 = "✅" if w_opt == "1" else "☐"
+    w2 = "✅" if w_opt == "2" else "☐"
+    return (
+        f"<b>Subject:</b> {h(subject)}\n"
+        f"<b>Board:</b> {h(board)}  |  <b>Grade:</b> {grade}\n\n"
+        f"<b>1)</b> Does your child prefer one-to-one or group tuition?\n"
+        f"{t1} One-to-one    {t2} Group\n\n"
+        f"<b>2)</b> How many lessons per week for this subject?\n"
+        f"{w1} 1   {w2} 2\n\n"
+        f"Press <b>Next</b> when both are selected."
+    )
+
+def kb_prefs(code: str, rest: str, board_code: str, grade: int, t_opt: str, w_opt: str):
+    row1 = [
+        {"text": ("✅ " if t_opt == "O" else "☐ ") + "One-to-one",
+         "callback_data": f"Q|{board_code}|{grade}|{code}|{rest}|O|{w_opt}"},
+        {"text": ("✅ " if t_opt == "G" else "☐ ") + "Group",
+         "callback_data": f"Q|{board_code}|{grade}|{code}|{rest}|G|{w_opt}"},
+    ]
+    row2 = [
+        {"text": ("✅ " if w_opt == "1" else "☐ ") + "1",
+         "callback_data": f"Q|{board_code}|{grade}|{code}|{rest}|{t_opt}|1"},
+        {"text": ("✅ " if w_opt == "2" else "☐ ") + "2",
+         "callback_data": f"Q|{board_code}|{grade}|{code}|{rest}|{t_opt}|2"},
+    ]
+    row3 = [{"text": "Next ▶️", "callback_data": f"QN|{board_code}|{grade}|{code}|{rest}|{t_opt}|{w_opt}"}]
+    return {"inline_keyboard": [row1, row2, row3]}
+
+def start_subject_pref(chat_id: int, board_code: str, grade: int, sel_codes: List[str]) -> None:
+    if not sel_codes:
+        return
+    rest = ".".join(sel_codes[1:])
+    code = sel_codes[0]
+    tg("sendMessage", {
+        "chat_id": chat_id,
+        "text": pref_text(code, board_code, grade, "?", "?"),
+        "parse_mode": "HTML",
+        "reply_markup": kb_prefs(code, rest, board_code, grade, "?", "?")
+    })
+
+
+# ------------ In-memory session & idempotency ------------
+SESSIONS: Dict[int, Dict[str, Any]] = {}
 RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
+
+def session(chat_id: int) -> Dict[str, Any]:
+    if chat_id not in SESSIONS:
+        SESSIONS[chat_id] = {"stage": "idle", "name": ""}
+    return SESSIONS[chat_id]
+
 def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
     now = time.time()
     lst = RECENT_DONE.get(chat_id, [])
     lst = [(k, t) for (k, t) in lst if now - t < ttl]
     RECENT_DONE[chat_id] = lst
     for k, _ in lst:
-        if k == signature: return True
+        if k == signature:
+            return True
     lst.append((signature, now))
     RECENT_DONE[chat_id] = lst
     return False
 
-# ---------- Minimal in-memory session (name) ----------
-SESSION: Dict[int, Dict[str, Any]] = {}
 
-# ---------- routes ----------
+# ------------ Routes ------------
 @app.get("/api/webhook")
 def ping():
-    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS),
-                   build=BUILD_TAG, bot=bool(BOT_API))
+    return jsonify(ok=True, build=BUILD_TAG, teachers=len(TEACHERS), bot=bool(BOT_API))
+
 
 def _handle_webhook():
     try:
-        if not BOT_API:
-            print("[ERR] Missing TELEGRAM_BOT_TOKEN")
-            return jsonify({"ok": True, "warn": "Missing TELEGRAM_BOT_TOKEN"}), 200
-
         update = request.get_json(force=True, silent=True) or {}
-        try:
-            print("[UPDATE]", json.dumps(update)[:2000])
-        except Exception:
-            print("[UPDATE] (non-serializable)")
+        print("[UPDATE]", json.dumps(update)[:1200])
 
-        # ----- callback buttons -----
+        # ---------- Callback queries ----------
         if "callback_query" in update:
             cq = update["callback_query"]
             chat_id = cq["message"]["chat"]["id"]
-            msg_id  = cq["message"]["message_id"]
-            data = cq.get("data","")
-
+            msg_id = cq["message"]["message_id"]
+            data = cq.get("data", "")
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-
-            def edit(text=None, reply_markup=None, parse_mode=None, disable_preview=None):
-                if text is not None:
-                    payload = {"chat_id": chat_id, "message_id": msg_id, "text": text}
-                    if reply_markup is not None: payload["reply_markup"] = reply_markup
-                    if parse_mode: payload["parse_mode"] = parse_mode
-                    if disable_preview is not None: payload["disable_web_page_preview"] = disable_preview
-                    tg("editMessageText", payload)
-                else:
-                    tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": reply_markup})
 
             if data == "noop":
                 return jsonify({"ok": True})
 
-            # Board
+            # Board chosen
             if data.startswith("B|"):
                 b = data.split("|", 1)[1]
-                edit(text="<b>Step 2/3 – Grade</b>\nSelect your child's current grade:",
-                     reply_markup=kb_grade(b), parse_mode="HTML")
+                s = session(chat_id)
+                s["board_code"] = b
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": "<b>Step 2/3 – Grade</b>\nSelect your child's current grade:",
+                    "parse_mode": "HTML", "reply_markup": kb_grade(b)
+                })
                 return jsonify({"ok": True})
 
-            # Grade
+            # Grade chosen
             if data.startswith("G|"):
                 _, g, b = data.split("|", 2)
                 g = int(g)
-                sel: Set[str] = set()
-                edit(text=summary_text(b, g, sel),
-                     reply_markup=kb_subjects(b, g, sel),
-                     parse_mode="HTML")
+                s = session(chat_id)
+                s["board_code"] = b
+                s["grade"] = g
+                sel = set()
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": summary_text(b, g, sel),
+                    "parse_mode": "HTML", "reply_markup": kb_subjects(b, g, sel)
+                })
                 return jsonify({"ok": True})
 
-            # Toggle Subject
+            # Toggle subject
             if data.startswith("T|"):
                 _, code, b, g, enc = data.split("|", 4)
                 g = int(g)
@@ -407,166 +418,142 @@ def _handle_webhook():
                 else:
                     if code in sel: sel.remove(code)
                     else: sel.add(code)
-                edit(text=summary_text(b, g, sel),
-                     reply_markup=kb_subjects(b, g, sel),
-                     parse_mode="HTML")
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": summary_text(b, g, sel),
+                    "parse_mode": "HTML", "reply_markup": kb_subjects(b, g, sel)
+                })
                 return jsonify({"ok": True})
 
-            # Done (subjects) -> move to per-subject preferences (new message)
+            # Done selecting subjects
             if data.startswith("D|"):
                 _, b, g, enc = data.split("|", 3)
                 g = int(g)
                 sel_codes = [x for x in enc.split(".") if x]
-                subjects = sorted({CODE_TO_SUBJECT[c] for c in sel_codes})
-                if not subjects:
+                if not sel_codes:
                     tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
                     return jsonify({"ok": True})
 
-                signature = f"{msg_id}|{b}|{g}|{'.'.join(sorted(sel_codes))}"
-                if already_done(chat_id, signature):
-                    print(f"[SKIP] duplicate done {signature}")
-                    return jsonify({"ok": True})
+                s = session(chat_id)
+                s["board_code"] = b
+                s["grade"] = g
+                s["sel_codes"] = sel_codes
+                s["subjects"] = [CODE_TO_SUBJECT[c] for c in sel_codes]
 
-                tg("editMessageReplyMarkup", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "reply_markup": {"inline_keyboard": []}
-                })
+                tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}})
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": (f"Great! We’ll tailor recommendations per subject.\n"
                              f"Board: <b>{h(BOARD_CODES.get(b,b))}</b> | Grade: <b>{g}</b>\n"
-                             f"Subjects: <b>{h(', '.join(subjects))}</b>\n\n"
+                             f"Subjects: <b>{h(', '.join(s['subjects']))}</b>\n\n"
                              f"You’ll be asked two quick preferences for each subject."),
                     "parse_mode": "HTML"
                 })
 
+                # Ask preferences for the first subject
                 start_subject_pref(chat_id, b, g, sel_codes)
                 return jsonify({"ok": True})
 
-            # Preferences toggle (Q|...)
+            # Preference toggle (Q|...) and Next (QN|...)
             if data.startswith("Q|"):
                 _, b, g, code, rest, t_opt, w_opt = data.split("|", 6)
                 g = int(g)
                 tg("editMessageText", {
-                    "chat_id": chat_id,
-                    "message_id": msg_id,
+                    "chat_id": chat_id, "message_id": msg_id,
                     "text": pref_text(code, b, g, t_opt, w_opt),
                     "parse_mode": "HTML",
                     "reply_markup": kb_prefs(code, rest, b, g, t_opt, w_opt)
                 })
                 return jsonify({"ok": True})
 
-            # Preferences Next (QN|...)
             if data.startswith("QN|"):
                 _, b, g, code, rest, t_opt, w_opt = data.split("|", 6)
                 g = int(g)
                 if t_opt not in ("O","G") or w_opt not in ("1","2"):
-                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please choose both options first."})
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Choose both options first."})
                     return jsonify({"ok": True})
 
-                tg("editMessageReplyMarkup", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "reply_markup": {"inline_keyboard": []}
-                })
-
-                subject = CODE_TO_SUBJECT.get(code, code)
-                mode_txt = "One-to-one" if t_opt == "O" else "Group"
-                prefer_mode = "1to1" if t_opt == "O" else "group"
-                prefer_lessons = int(w_opt)
-
-                tg("sendMessage", {
-                    "chat_id": chat_id,
-                    "text": (f"<b>{h(subject)}</b>\n"
-                             f"Mode: <b>{h(mode_txt)}</b> | Lessons/week: <b>{prefer_lessons}</b>"),
-                    "parse_mode": "HTML"
-                })
-
-                board = BOARD_CODES.get(b, b)
-                parent_name = (SESSION.get(chat_id) or {}).get("name", "")
-
-                matches = match_teachers(
-                    subject, g, board,
-                    prefer_mode=prefer_mode,
-                    prefer_lessons=prefer_lessons,
-                    strict=False,
-                    limit=4
-                )
-
-                if not matches:
-                    tg("sendMessage", {
-                        "chat_id": chat_id,
-                        "text": "No exact matches right now. We'll expand the search and get back to you.",
+                # move to next subject if there is
+                if rest:
+                    next_list = [x for x in rest.split(".") if x]
+                    start_subject_pref(chat_id, b, g, next_list)
+                    tg("editMessageText", {
+                        "chat_id": chat_id, "message_id": msg_id,
+                        "text": "Saved. Moving to the next subject…",
                         "parse_mode": "HTML"
                     })
-                else:
-                    for ttr in matches:
-                        caption = format_teacher_line(ttr, {
-                            "parent_name": parent_name,
-                            "board": board,
-                            "grade": g,
-                            "subject": subject,
-                            "mode": prefer_mode,
-                            "lessons": prefer_lessons
-                        })
-                        photo = ttr.get("photo_url")
-                        if photo:
-                            tg("sendPhoto", {
-                                "chat_id": chat_id,
-                                "photo": photo,
-                                "caption": caption,
-                                "parse_mode": "HTML"
-                            })
-                        else:
-                            tg("sendMessage", {
-                                "chat_id": chat_id,
-                                "text": caption,
-                                "parse_mode": "HTML",
-                                "disable_web_page_preview": True
-                            })
+                    return jsonify({"ok": True})
 
-                rest_codes = [x for x in rest.split(".") if x]
-                if rest_codes:
-                    start_subject_pref(chat_id, b, g, rest_codes)
-                else:
-                    tg("sendMessage", {
-                        "chat_id": chat_id,
-                        "text": "All set! You can contact any tutor via the WhatsApp link on the cards. 🌟"
-                    })
+                # No more subjects -> produce matches once
+                s = session(chat_id)
+                board = BOARD_CODES.get(s.get("board_code", b), b)
+                grade = s.get("grade", g)
+                subjects = s.get("subjects", [])
+                parent_name = s.get("name") or "Parent"
+
+                signature = f"FINAL|{msg_id}|{board}|{grade}|{'.'.join(subjects)}"
+                if already_done(chat_id, signature):
+                    print("[SKIP] duplicate final")
+                    return jsonify({"ok": True})
+
+                matches = collect_best_matches(subjects, grade, board, k=4)
+                first_photo = matches[0].get("photo_url") if matches and matches[0].get("photo_url") else None
+                overview = build_overview_text(board, grade, subjects, first_photo)
+                tg("sendMessage", {
+                    "chat_id": chat_id, "text": overview, "parse_mode": "HTML",
+                    "disable_web_page_preview": False
+                })
+
+                # Send each tutor as photo+caption
+                for t in matches:
+                    caption = format_teacher_caption_html(t, parent_name, board, grade, subjects)
+                    photo = t.get("photo_url")
+                    if photo:
+                        tg("sendPhoto", {
+                            "chat_id": chat_id, "photo": photo,
+                            "caption": caption, "parse_mode": "HTML"
+                        })
+                    else:
+                        tg("sendMessage", {"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
+
+                if not matches:
+                    tg("sendMessage", {"chat_id": chat_id,
+                                       "text": "Sorry, no exact matches right now. We’ll expand the search and get back to you."})
+
                 return jsonify({"ok": True})
 
             return jsonify({"ok": True})
 
-        # ----- normal messages -----
+        # ---------- Normal messages (/start, name, fallback) ----------
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
 
         chat_id = msg["chat"]["id"]
         text = (msg.get("text") or "").strip()
+        s = session(chat_id)
 
-        # step 0: ask for parent name first
-        st = SESSION.get(chat_id) or {}
         if text.lower() in ("/start", "start"):
-            SESSION[chat_id] = {"stage": "ask_name"}
+            # reset session & ask for parent name
+            SESSIONS[chat_id] = {"stage": "ask_name", "name": ""}
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (parent):"
+                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (parent):",
             })
             return jsonify({"ok": True})
 
-        if st.get("stage") == "ask_name":
-            # save name and go to board step
-            name = text[:80].strip()
-            SESSION[chat_id] = {"stage": "flow", "name": name}
+        if s.get("stage") == "ask_name" and text:
+            s["name"] = text
+            s["stage"] = "flow"
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": f"Thanks, {h(name)}!\n\n<b>Step 1/3 – Board</b>\nWhich board or curriculum does your child follow?",
+                "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum does your child follow?",
                 "parse_mode": "HTML",
                 "reply_markup": kb_board()
             })
             return jsonify({"ok": True})
 
-        # otherwise point to guided flow
+        # Fallback: point user to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the guided flow 👇",
@@ -577,14 +564,16 @@ def _handle_webhook():
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
+        # return 200 so Telegram doesn't retry (avoids duplicates)
         return jsonify({"ok": True}), 200
 
-# Explicit route (Vercel webhook)
+
+# Vercel entrypoint
 @app.post("/api/webhook")
 def webhook_api():
     return _handle_webhook()
 
-# Catch-all
+# Catch-all (safety if Telegram hits root)
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook_catchall(subpath=None):
