@@ -6,15 +6,13 @@ from rapidfuzz import fuzz
 
 app = Flask(__name__)
 
-BUILD_TAG = "portal-no-repeats-html-v2"
+BUILD_TAG = "portal-photos-per-tutor-v1"
 
 # ---------- Telegram ----------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
 if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
-
-
 
 def tg(method: str, payload: Dict[str, Any]):
     """Telegram call with logging; never crash."""
@@ -135,31 +133,52 @@ def h(x: str) -> str:
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
+def canonical_subject(label: str) -> str | None:
+    """Map any input label to one canonical subject name (strict)."""
+    t = _norm(label)
+    for canonical, aliases in VALID_SUBJECTS.items():
+        pool = [canonical] + aliases
+        if any(_norm(x) == t for x in pool):
+            nice = {
+                "ict": "ICT",
+                "cs": "Computer Science",
+                "pe": "Physical Education",
+                "english language": "English Language",
+                "english literature": "English Literature",
+                "math": "Math",
+            }
+            key = canonical.lower()
+            return nice.get(key, canonical.title())
+    return None
+
+# preprocess normalized subjects per teacher
+for t in TEACHERS:
+    subj = t.get("subjects", [])
+    t["_subjects_canon"] = set()
+    for s in subj:
+        c = canonical_subject(s)
+        if c:
+            t["_subjects_canon"].add(c)
+
 def match_teachers(subject=None, grade=None, board=None, limit=4):
-    scored = []
+    """Strict subject match, then rank by grade & board overlap."""
+    results = []
+    wanted = canonical_subject(subject) if subject else None
     for t in TEACHERS:
+        if wanted and wanted not in t.get("_subjects_canon", set()):
+            continue
         score = 0
-        # subject
-        if subject:
-            if any(_norm(subject) == _norm(s) for s in t.get("subjects", [])):
-                score += 60
-            else:
-                best_sub = max((fuzz.partial_ratio(subject.lower(), s.lower())
-                               for s in t.get("subjects", [])), default=0)
-                score += best_sub * 0.3
-        # grade
-        if grade and t.get("grades"):
-            if grade in t["grades"]:
-                score += 20
-        # board
-        if board and t.get("boards"):
-            if any(_norm(board) == _norm(b) for b in t["boards"]):
-                score += 20
-        scored.append((score, t))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [t for sc, t in scored[:limit] if sc > 30]
+        if grade and t.get("grades") and grade in t["grades"]:
+            score += 50
+        if board and t.get("boards") and any(_norm(board) == _norm(b) for b in t["boards"]):
+            score += 50
+        results.append((score, t))
+    results.sort(key=lambda x: x[0], reverse=True)
+    trimmed = [t for sc, t in results if sc > 0] or [t for _, t in results]
+    return trimmed[:limit]
 
 def format_teacher_line(t: Dict[str, Any]) -> str:
+    """HTML caption/body (لا يوجد رابط Photo هنا)."""
     quals = ", ".join(t.get("qualifications", []))
     boards = ", ".join(t.get("boards", []))
     grades = ""
@@ -169,40 +188,26 @@ def format_teacher_line(t: Dict[str, Any]) -> str:
     contact = t.get("contact", {})
     wa = contact.get("whatsapp") or ""
     whatsapp = f'<a href="{h(wa)}">WhatsApp</a>' if wa else ""
-    photo_url = t.get("photo_url") or ""
-    photo = f'<a href="{h(photo_url)}">Photo</a>' if photo_url else ""
-
     lines = [
         f"<b>{h(t['name'])}</b> — {h(', '.join(t.get('subjects', [])))}",
         "  " + " | ".join([x for x in [h(grades), f"Boards {h(boards)}" if boards else ""] if x]),
     ]
-    if t.get("bio"):      lines.append("  " + h(t["bio"]))
-    if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
-    if photo or whatsapp: lines.append("  " + " • ".join([x for x in [photo, whatsapp] if x]))
+    if t.get("bio"):  lines.append("  " + h(t["bio"]))
+    if quals:         lines.append("  " + f"Qualifications: {h(quals)}")
+    if whatsapp:      lines.append("  " + whatsapp)
     return "\n".join(lines)
 
-def build_final_message(board: str, grade: int, subjects: List[str], matches: List[Dict[str, Any]]) -> str:
-    header = (f"Thanks! Here are the best matches for:\n"
-              f"Board: <b>{h(board)}</b> | Grade: <b>{grade}</b>\n"
-              f"Subjects: <b>{h(', '.join(subjects))}</b>")
-    body = []
-    if matches:
-        for i, t in enumerate(matches, 1):
-            body.append(f"\n<b>{i})</b> " + format_teacher_line(t))
-    else:
-        body.append("\nSorry, no exact matches right now. We’ll expand the search and get back to you.")
-    top_preview = ""
-    if matches and matches[0].get("photo_url"):
-        # bare URL first line for Telegram preview
-        top_preview = h(matches[0]["photo_url"]) + "\n\n"
-    return top_preview + header + "\n" + "\n".join(body)
+def build_header_text(board: str, grade: int, subjects: List[str]) -> str:
+    return (f"Thanks! Here are the best matches for:\n"
+            f"Board: <b>{h(board)}</b> | Grade: <b>{grade}</b>\n"
+            f"Subjects: <b>{h(', '.join(subjects))}</b>")
 
 def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
     seen, out = set(), []
     for s in subjects:
         for t in match_teachers(s, grade, board, limit=3):
             tid = t.get("id") or t["name"]
-            if tid in seen:
+            if tid in seen: 
                 continue
             seen.add(tid)
             out.append(t)
@@ -210,11 +215,7 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
                 return out
     return out
 
-# ----- state encoding inside callback_data (no DB needed) -----
-#  B|C                    -> choose Board (C/E/O)
-#  G|8|C                  -> choose Grade (7..12) + keep Board
-#  T|MTH|C|8|MTH.ENL      -> toggle Subject code (add/remove) with current state
-#  D|C|8|MTH.ENL          -> Done with current selection
+# ----- state encoding -----
 def encode_sel(sel: Set[str]) -> str:
     return ".".join(sorted(sel)) if sel else ""
 
@@ -266,7 +267,7 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press <b>Done</b>.\n"
             f"Selected: {chosen}")
 
-# ---------- Idempotency (prevent repeats) ----------
+# ---------- Idempotency ----------
 RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
 def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
     now = time.time()
@@ -283,7 +284,8 @@ def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
 # ---------- routes ----------
 @app.get("/api/webhook")
 def ping():
-    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS), build=BUILD_TAG, bot=bool(BOT_API))
+    return jsonify(ok=True, msg="webhook alive", teachers=len(TEACHERS),
+                   build=BUILD_TAG, bot=bool(BOT_API))
 
 def _handle_webhook():
     try:
@@ -297,17 +299,14 @@ def _handle_webhook():
         except Exception:
             print("[UPDATE] (non-serializable)")
 
-        # 1) handle button presses
+        # 1) callback buttons
         if "callback_query" in update:
             cq = update["callback_query"]
             chat_id = cq["message"]["chat"]["id"]
             msg_id  = cq["message"]["message_id"]
             data = cq.get("data","")
 
-            # Always ack quickly to avoid Telegram retry
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
-
-            # after we turned message into final "Thanks!" ignore late taps
             if (cq.get("message", {}).get("text") or "").startswith("Thanks!"):
                 return jsonify({"ok": True})
 
@@ -355,7 +354,7 @@ def _handle_webhook():
                      parse_mode="HTML")
                 return jsonify({"ok": True})
 
-            # D|C|8|MTH.ENL  -> FINAL single message (edit same msg)
+            # D|C|8|MTH.ENL -> confirm + send photos per tutor
             if data.startswith("D|"):
                 _, b, g, enc = data.split("|", 3)
                 g = int(g)
@@ -367,38 +366,55 @@ def _handle_webhook():
                     tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
                     return jsonify({"ok": True})
 
-                # idempotency across retries/instances
                 signature = f"{msg_id}|{b}|{g}|{'.'.join(sorted(sel))}"
                 if already_done(chat_id, signature):
                     print(f"[SKIP] duplicate done {signature}")
                     return jsonify({"ok": True})
 
-                # Close keyboard first
+                # Close keyboard
                 tg("editMessageReplyMarkup", {
                     "chat_id": chat_id,
                     "message_id": msg_id,
                     "reply_markup": {"inline_keyboard": []}
                 })
 
-                matches = collect_best_matches(subjects, g, board, k=4)
-                final_text = build_final_message(board, g, subjects, matches)
-
-                print(f"[DONE] chat={chat_id} msg={msg_id} board={board} grade={g} subjects={subjects} matches={len(matches)}")
-
-                # ONE final message: edit same message (no extra sends)
+                # 1) header (edit نفس الرسالة)
+                header = build_header_text(board, g, subjects)
                 tg("editMessageText", {
                     "chat_id": chat_id,
                     "message_id": msg_id,
-                    "text": final_text,
+                    "text": header,
                     "parse_mode": "HTML",
-                    "disable_web_page_preview": False  # allow photo preview
+                    "disable_web_page_preview": True
                 })
+
+                # 2) ابعت المدرسين صورة+كابتشن أو نص فقط
+                matches = collect_best_matches(subjects, g, board, k=4)
+                for t in matches:
+                    caption = format_teacher_line(t)
+                    photo = t.get("photo_url")
+                    if photo:
+                        tg("sendPhoto", {
+                            "chat_id": chat_id,
+                            "photo": photo,
+                            "caption": caption,
+                            "parse_mode": "HTML"
+                        })
+                    else:
+                        tg("sendMessage", {
+                            "chat_id": chat_id,
+                            "text": caption,
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": True
+                        })
+
+                tg("sendMessage", {"chat_id": chat_id,
+                                   "text": "You can contact the Kuwait IGCSE Portal through the WhatsApp link on each card. 🌟"})
                 return jsonify({"ok": True})
 
-            # ignore others
             return jsonify({"ok": True})
 
-        # 2) handle normal messages (/start or free text)
+        # 2) normal messages
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
@@ -415,7 +431,6 @@ def _handle_webhook():
             })
             return jsonify({"ok": True})
 
-        # fallback: point to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the guided flow 👇",
@@ -426,7 +441,6 @@ def _handle_webhook():
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
-        # return 200 to prevent Telegram retries & duplicates
         return jsonify({"ok": True}), 200
 
 # Explicit route (Vercel webhook)
