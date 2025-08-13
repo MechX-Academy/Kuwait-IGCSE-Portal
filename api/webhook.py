@@ -1,12 +1,12 @@
+# api/webhook.py
 import os, json, re, time, traceback, html
 from typing import Dict, Any, List, Tuple, Set
 from flask import Flask, request, jsonify
 import requests
-from rapidfuzz import fuzz
 
 app = Flask(__name__)
 
-BUILD_TAG = "portal-subject-prefs-v1"
+BUILD_TAG = "portal-subject-prefs-weighted-v1"
 
 # ---------- Telegram ----------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -44,7 +44,7 @@ except Exception as e:
     print(f"ERROR loading teachers.json from {DATA_PATH}: {e}")
     TEACHERS = []
 
-# canonical subjects used for matching
+# ---------- subjects / boards ----------
 VALID_SUBJECTS = {
     "math": ["math", "mathematics", "additional math", "further math"],
     "physics": ["physics", "phys"],
@@ -70,7 +70,6 @@ VALID_SUBJECTS = {
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
 }
 
-# short codes for multi-select keyboards
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
         ("MTH", "Mathematics"),
@@ -101,7 +100,6 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     ],
 }
 
-# mapping code -> canonical subject label used in TEACHERS/VALID_SUBJECTS
 CODE_TO_SUBJECT = {
     "MTH": "Math",
     "ENL": "English Language",
@@ -124,7 +122,7 @@ CODE_TO_SUBJECT = {
     "TT": "Travel & Tourism",
 }
 
-BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}  # "Oxford" → OxfordAQA
+BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
 # ---------- helpers ----------
 def h(x: str) -> str:
@@ -134,7 +132,6 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 def canonical_subject(label: str) -> str | None:
-    """Map any input label to one canonical subject name (strict)."""
     t = _norm(label)
     for canonical, aliases in VALID_SUBJECTS.items():
         pool = [canonical] + aliases
@@ -160,44 +157,147 @@ for t in TEACHERS:
         if c:
             t["_subjects_canon"].add(c)
 
-def match_teachers(subject=None, grade=None, board=None, limit=4):
-    """Strict subject match, then rank by grade & board overlap."""
+# ----- preference helpers (optional fields in teachers.json) -----
+def _teacher_modes_for_subject(t: Dict[str, Any], subj: str) -> List[str]:
+    subj_cfg = (t.get("subject_prefs") or {}).get(subj, {})
+    modes = subj_cfg.get("modes") or t.get("modes") or []
+    return [m.strip().lower() for m in modes]
+
+def _teacher_supports_lessons(t: Dict[str, Any], subj: str, lessons: int) -> bool:
+    subj_cfg = (t.get("subject_prefs") or {}).get(subj, {})
+    arr = subj_cfg.get("weekly_lessons_supported") or t.get("weekly_lessons_supported") or []
+    try:
+        return int(lessons) in [int(x) for x in arr]
+    except Exception:
+        return False
+
+def _pref_score(t: Dict[str, Any], subj: str | None, mode: str | None, lessons: int | None) -> int:
+    s = 0
+    if subj and mode:
+        if mode.strip().lower() in _teacher_modes_for_subject(t, subj):
+            s += 40
+    if subj and lessons:
+        if _teacher_supports_lessons(t, subj, lessons):
+            s += 25
+    return s
+
+# ----- matching -----
+def match_teachers(
+    subject=None,
+    grade=None,
+    board=None,
+    prefer_mode: str | None = None,     # "1to1" / "group" / None
+    prefer_lessons: int | None = None,  # 1 / 2 / None
+    strict: bool = False,
+    limit: int = 4
+):
+    """Strict subject match; rank by grade/board + preference weights."""
     results = []
     wanted = canonical_subject(subject) if subject else None
+
     for t in TEACHERS:
         if wanted and wanted not in t.get("_subjects_canon", set()):
             continue
+
+        if strict:
+            if prefer_mode and prefer_mode.strip().lower() not in _teacher_modes_for_subject(t, wanted or ""):
+                continue
+            if (prefer_lessons is not None) and not _teacher_supports_lessons(t, wanted or "", prefer_lessons):
+                continue
+
         score = 0
         if grade and t.get("grades") and grade in t["grades"]:
             score += 50
         if board and t.get("boards") and any(_norm(board) == _norm(b) for b in t["boards"]):
             score += 50
+        score += _pref_score(t, wanted, prefer_mode, prefer_lessons)
+
         results.append((score, t))
+
     results.sort(key=lambda x: x[0], reverse=True)
     trimmed = [t for sc, t in results if sc > 0] or [t for _, t in results]
     return trimmed[:limit]
 
 def format_teacher_line(t: Dict[str, Any]) -> str:
-    """HTML caption/body (لا يوجد رابط Photo هنا)."""
+    """HTML caption/body (no Photo link here)."""
     quals = ", ".join(t.get("qualifications", []))
     boards = ", ".join(t.get("boards", []))
     grades = ""
     if t.get("grades"):
         gmin, gmax = min(t["grades"]), max(t["grades"])
         grades = f"Grades {gmin}-{gmax}"
-    contact = t.get("contact", {})
-    wa = contact.get("whatsapp") or ""
+    wa = (t.get("contact") or {}).get("whatsapp") or ""
     whatsapp = f'<a href="{h(wa)}">WhatsApp</a>' if wa else ""
     lines = [
         f"<b>{h(t['name'])}</b> — {h(', '.join(t.get('subjects', [])))}",
         "  " + " | ".join([x for x in [h(grades), f"Boards {h(boards)}" if boards else ""] if x]),
     ]
-    if t.get("bio"):  lines.append("  " + h(t["bio"]))
-    if quals:         lines.append("  " + f"Qualifications: {h(quals)}")
-    if whatsapp:      lines.append("  " + whatsapp)
+    if t.get("bio"):
+        lines.append("  " + h(t["bio"]))
+    if quals:
+        lines.append("  " + f"Qualifications: {h(quals)}")
+    if whatsapp:
+        lines.append("  " + whatsapp)
     return "\n".join(lines)
 
-# -------- subject preferences UI (per subject) --------
+def build_header_text(board: str, grade: int, subjects: List[str]) -> str:
+    return (f"Thanks! Here are the best matches for:\n"
+            f"Board: <b>{h(board)}</b> | Grade: <b>{grade}</b>\n"
+            f"Subjects: <b>{h(', '.join(subjects))}</b>")
+
+# ----- selection encoding in callback_data -----
+def encode_sel(sel: Set[str]) -> str:
+    return ".".join(sorted(sel)) if sel else ""
+
+def decode_sel(s: str) -> Set[str]:
+    return set([x for x in s.split(".") if x])
+
+def kb_board():
+    return {"inline_keyboard": [[
+        {"text": "Cambridge", "callback_data": "B|C"},
+        {"text": "Edexcel",   "callback_data": "B|E"},
+        {"text": "Oxford",    "callback_data": "B|O"},
+    ]]}
+
+def kb_grade(board_code: str):
+    rows, row = [], []
+    for g in range(7, 13):
+        row.append({"text": f"{g}", "callback_data": f"G|{g}|{board_code}"})
+        if len(row) == 4:
+            rows.append(row); row = []
+    if row: rows.append(row)
+    rows.append([{"text": "⬅️ Back", "callback_data": "B|"+board_code}])
+    return {"inline_keyboard": rows}
+
+def kb_subjects(board_code: str, grade: int, sel: Set[str]):
+    rows = []
+    def tick(code): return "✅" if code in sel else "☐"
+    for group, items in SUBJECT_GROUPS.items():
+        rows.append([{"text": f"— {group} —", "callback_data": "noop"}])
+        for i in range(0, len(items), 2):
+            row = []
+            for code, label in items[i:i+2]:
+                row.append({
+                    "text": f"{tick(code)} {label}",
+                    "callback_data": f"T|{code}|{board_code}|{grade}|{encode_sel(sel)}"
+                })
+            rows.append(row)
+    rows.append([
+        {"text": "Done ✅", "callback_data": f"D|{board_code}|{grade}|{encode_sel(sel)}"},
+        {"text": "Reset ↩️", "callback_data": f"T|__RESET__|{board_code}|{grade}|{encode_sel(sel)}"},
+    ])
+    rows.append([{"text": "⬅️ Back", "callback_data": f"G|{grade}|{board_code}"}])
+    return {"inline_keyboard": rows}
+
+def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
+    board = BOARD_CODES.get(board_code, board_code)
+    chosen = ", ".join(h(CODE_TO_SUBJECT[c]) for c in sorted(sel)) if sel else "—"
+    return (f"<b>Step 3/3 – Subjects</b>\n"
+            f"Board: <b>{h(board)}</b>   |   Grade: <b>{grade}</b>\n"
+            f"Pick one or more subjects, then press <b>Done</b>.\n"
+            f"Selected: {chosen}")
+
+# ----- per-subject preferences UI -----
 def pref_text(code: str, b: str, g: int, t: str, w: str) -> str:
     board = BOARD_CODES.get(b, b)
     subj  = CODE_TO_SUBJECT.get(code, code)
@@ -227,7 +327,6 @@ def kb_prefs(code: str, rest: str, b: str, g: int, t: str, w: str):
     }
 
 def start_subject_pref(chat_id: int, b: str, g: int, codes: List[str]):
-    """Send first subject preferences screen (new message)."""
     if not codes:
         return
     code = codes[0]
@@ -271,7 +370,7 @@ def _handle_webhook():
         except Exception:
             print("[UPDATE] (non-serializable)")
 
-        # 1) callback buttons
+        # ----- callback buttons -----
         if "callback_query" in update:
             cq = update["callback_query"]
             chat_id = cq["message"]["chat"]["id"]
@@ -293,104 +392,39 @@ def _handle_webhook():
             if data == "noop":
                 return jsonify({"ok": True})
 
-            # --- Board chosen ---
+            # Board
             if data.startswith("B|"):
                 b = data.split("|", 1)[1]
                 edit(text="<b>Step 2/3 – Grade</b>\nSelect your child's current grade:",
-                     reply_markup={
-                         "inline_keyboard": (
-                             [[{"text": f"{g}", "callback_data": f"G|{g}|{b}"} for g in range(7,11)],
-                              [{"text": f"{g}", "callback_data": f"G|{g}|{b}"} for g in range(11,13)],
-                              [{"text": "⬅️ Back", "callback_data": "B|"+b}]]
-                         )
-                     }, parse_mode="HTML")
+                     reply_markup=kb_grade(b), parse_mode="HTML")
                 return jsonify({"ok": True})
 
-            # --- Grade chosen ---
+            # Grade
             if data.startswith("G|"):
                 _, g, b = data.split("|", 2)
                 g = int(g)
                 sel: Set[str] = set()
-                # subjects screen
-                def tick(code, sel): return "✅" if code in sel else "☐"
-                def kb_subjects(board_code: str, grade: int, sel: Set[str]):
-                    rows = []
-                    for group, items in SUBJECT_GROUPS.items():
-                        rows.append([{"text": f"— {group} —", "callback_data": "noop"}])
-                        for i in range(0, len(items), 2):
-                            row = []
-                            for code, label in items[i:i+2]:
-                                row.append({
-                                    "text": f"{tick(code, sel)} {label}",
-                                    "callback_data": f"T|{code}|{board_code}|{grade}|{'.'.join(sorted(sel))}"
-                                })
-                            rows.append(row)
-                    rows.append([
-                        {"text": "Done ✅", "callback_data": f"D|{b}|{g}|{'.'.join(sorted(sel))}"},
-                        {"text": "Reset ↩️", "callback_data": f"T|__RESET__|{b}|{g}|{'.'.join(sorted(sel))}"},
-                    ])
-                    rows.append([{"text": "⬅️ Back", "callback_data": f"B|{b}"}])
-                    return {"inline_keyboard": rows}
-
-                def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
-                    board = BOARD_CODES.get(board_code, board_code)
-                    chosen = ", ".join(h(CODE_TO_SUBJECT[c]) for c in sorted(sel)) if sel else "—"
-                    return (f"<b>Step 3/3 – Subjects</b>\n"
-                            f"Board: <b>{h(board)}</b>   |   Grade: <b>{grade}</b>\n"
-                            f"Pick one or more subjects, then press <b>Done</b>.\n"
-                            f"Selected: {chosen}")
-
                 edit(text=summary_text(b, g, sel),
                      reply_markup=kb_subjects(b, g, sel),
                      parse_mode="HTML")
                 return jsonify({"ok": True})
 
-            # --- Toggle subject ---
+            # Toggle Subject
             if data.startswith("T|"):
                 _, code, b, g, enc = data.split("|", 4)
                 g = int(g)
-                sel = set([x for x in enc.split(".") if x])
+                sel = decode_sel(enc)
                 if code == "__RESET__":
                     sel = set()
                 else:
                     if code in sel: sel.remove(code)
                     else: sel.add(code)
-
-                # re-render subjects screen
-                def tick(c): return "✅" if c in sel else "☐"
-                def kb_subjects(board_code: str, grade: int):
-                    rows = []
-                    for group, items in SUBJECT_GROUPS.items():
-                        rows.append([{"text": f"— {group} —", "callback_data": "noop"}])
-                        for i in range(0, len(items), 2):
-                            row = []
-                            for c, label in items[i:i+2]:
-                                row.append({
-                                    "text": f"{tick(c)} {label}",
-                                    "callback_data": f"T|{c}|{board_code}|{grade}|{'.'.join(sorted(sel))}"
-                                })
-                            rows.append(row)
-                    rows.append([
-                        {"text": "Done ✅", "callback_data": f"D|{b}|{g}|{'.'.join(sorted(sel))}"},
-                        {"text": "Reset ↩️", "callback_data": f"T|__RESET__|{b}|{g}|{'.'.join(sorted(sel))}"},
-                    ])
-                    rows.append([{"text": "⬅️ Back", "callback_data": f"B|{b}"}])
-                    return {"inline_keyboard": rows}
-
-                def summary_text(board_code: str, grade: int) -> str:
-                    board = BOARD_CODES.get(board_code, board_code)
-                    chosen = ", ".join(h(CODE_TO_SUBJECT[c]) for c in sorted(sel)) if sel else "—"
-                    return (f"<b>Step 3/3 – Subjects</b>\n"
-                            f"Board: <b>{h(board)}</b>   |   Grade: <b>{grade}</b>\n"
-                            f"Pick one or more subjects, then press <b>Done</b>.\n"
-                            f"Selected: {chosen}")
-
-                edit(text=summary_text(b, g),
-                     reply_markup=kb_subjects(b, g),
+                edit(text=summary_text(b, g, sel),
+                     reply_markup=kb_subjects(b, g, sel),
                      parse_mode="HTML")
                 return jsonify({"ok": True})
 
-            # --- Done subjects -> start per-subject preferences flow ---
+            # Done (subjects) -> start per-subject preferences flow
             if data.startswith("D|"):
                 _, b, g, enc = data.split("|", 3)
                 g = int(g)
@@ -406,15 +440,13 @@ def _handle_webhook():
                     print(f"[SKIP] duplicate done {signature}")
                     return jsonify({"ok": True})
 
-                # Close keyboard & show brief header
+                # Close keyboard & brief note
                 tg("editMessageReplyMarkup", {
-                    "chat_id": chat_id,
-                    "message_id": msg_id,
+                    "chat_id": chat_id, "message_id": msg_id,
                     "reply_markup": {"inline_keyboard": []}
                 })
                 tg("editMessageText", {
-                    "chat_id": chat_id,
-                    "message_id": msg_id,
+                    "chat_id": chat_id, "message_id": msg_id,
                     "text": (f"Great! We’ll tailor recommendations per subject.\n"
                              f"Board: <b>{h(BOARD_CODES.get(b,b))}</b> | Grade: <b>{g}</b>\n"
                              f"Subjects: <b>{h(', '.join(subjects))}</b>\n\n"
@@ -422,29 +454,28 @@ def _handle_webhook():
                     "parse_mode": "HTML"
                 })
 
-                # Start: first subject pref screen as a new message
+                # Start first subject preferences (new message)
                 start_subject_pref(chat_id, b, g, sel_codes)
                 return jsonify({"ok": True})
 
-            # --- Preferences toggles (Q|...) ---
+            # Preferences toggle (Q|...)
             if data.startswith("Q|"):
-                _, b, g, code, rest, t, w = data.split("|", 6)
+                _, b, g, code, rest, t_opt, w_opt = data.split("|", 6)
                 g = int(g)
-                # just update the same message with toggled value
                 tg("editMessageText", {
                     "chat_id": chat_id,
                     "message_id": msg_id,
-                    "text": pref_text(code, b, g, t, w),
+                    "text": pref_text(code, b, g, t_opt, w_opt),
                     "parse_mode": "HTML",
-                    "reply_markup": kb_prefs(code, rest, b, g, t, w)
+                    "reply_markup": kb_prefs(code, rest, b, g, t_opt, w_opt)
                 })
                 return jsonify({"ok": True})
 
-            # --- Preferences Next (QN|...) -> send matches for this subject, then move to next ---
+            # Preferences Next (QN|...) -> send matches for this subject, then move on
             if data.startswith("QN|"):
-                _, b, g, code, rest, t, w = data.split("|", 6)
+                _, b, g, code, rest, t_opt, w_opt = data.split("|", 6)
                 g = int(g)
-                if t not in ("O","G") or w not in ("1","2"):
+                if t_opt not in ("O","G") or w_opt not in ("1","2"):
                     tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please choose both options first."})
                     return jsonify({"ok": True})
 
@@ -453,20 +484,29 @@ def _handle_webhook():
                     "chat_id": chat_id, "message_id": msg_id,
                     "reply_markup": {"inline_keyboard": []}
                 })
-                subject = CODE_TO_SUBJECT.get(code, code)
-                mode_txt = "One-to-one" if t == "O" else "Group"
 
-                # Send heading for this subject with preferences
+                subject = CODE_TO_SUBJECT.get(code, code)
+                mode_txt = "One-to-one" if t_opt == "O" else "Group"
+                prefer_mode = "1to1" if t_opt == "O" else "group"
+                prefer_lessons = int(w_opt)
+
+                # heading for this subject + prefs
                 tg("sendMessage", {
                     "chat_id": chat_id,
                     "text": (f"<b>{h(subject)}</b>\n"
-                             f"Mode: <b>{h(mode_txt)}</b> | Lessons/week: <b>{h(w)}</b>"),
+                             f"Mode: <b>{h(mode_txt)}</b> | Lessons/week: <b>{prefer_lessons}</b>"),
                     "parse_mode": "HTML"
                 })
 
-                # Send tutors
                 board = BOARD_CODES.get(b, b)
-                matches = match_teachers(subject, g, board, limit=4)
+                matches = match_teachers(
+                    subject, g, board,
+                    prefer_mode=prefer_mode,
+                    prefer_lessons=prefer_lessons,
+                    strict=False,   # ضع True لو عايز فلترة صارمة بالتفضيلات
+                    limit=4
+                )
+
                 if not matches:
                     tg("sendMessage", {
                         "chat_id": chat_id,
@@ -492,18 +532,20 @@ def _handle_webhook():
                                 "disable_web_page_preview": True
                             })
 
-                # Move to next subject (if any)
+                # move to next subject (if any)
                 rest_codes = [x for x in rest.split(".") if x]
                 if rest_codes:
                     start_subject_pref(chat_id, b, g, rest_codes)
                 else:
-                    tg("sendMessage", {"chat_id": chat_id,
-                                       "text": "All set! You can contact any tutor via the WhatsApp link on the cards. 🌟"})
+                    tg("sendMessage", {
+                        "chat_id": chat_id,
+                        "text": "All set! You can contact any tutor via the WhatsApp link on the cards. 🌟"
+                    })
                 return jsonify({"ok": True})
 
             return jsonify({"ok": True})
 
-        # 2) normal messages
+        # ----- normal messages -----
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
@@ -512,32 +554,19 @@ def _handle_webhook():
         text = (msg.get("text") or "").strip()
 
         if text.lower() in ("/start", "start"):
-            # Step 1: Board
             tg("sendMessage", {
                 "chat_id": chat_id,
                 "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum does your child follow?",
                 "parse_mode": "HTML",
-                "reply_markup": {
-                    "inline_keyboard": [[
-                        {"text": "Cambridge", "callback_data": "B|C"},
-                        {"text": "Edexcel",   "callback_data": "B|E"},
-                        {"text": "Oxford",    "callback_data": "B|O"},
-                    ]]
-                }
+                "reply_markup": kb_board()
             })
             return jsonify({"ok": True})
 
-        # fallback: point to guided flow
+        # fallback to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the guided flow 👇",
-            "reply_markup": {
-                "inline_keyboard": [[
-                    {"text": "Cambridge", "callback_data": "B|C"},
-                    {"text": "Edexcel",   "callback_data": "B|E"},
-                    {"text": "Oxford",    "callback_data": "B|O"},
-                ]]
-            }
+            "reply_markup": kb_board()
         })
         return jsonify({"ok": True})
 
@@ -551,7 +580,7 @@ def _handle_webhook():
 def webhook_api():
     return _handle_webhook()
 
-# Catch-all (safety)
+# Catch-all
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook_catchall(subpath=None):
