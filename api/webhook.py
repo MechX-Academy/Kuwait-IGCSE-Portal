@@ -503,7 +503,8 @@ def _handle_webhook():
                     subject, g, board,
                     prefer_mode=prefer_mode,
                     prefer_lessons=prefer_lessons,
-                    strict=False,   # ضع True لو عايز فلترة صارمة بالتفضيلات
+                    #strict=False,   # ضع True لو عايز فلترة صارمة بالتفضيلات
+                    strict=True,
                     limit=4
                 )
 
@@ -539,7 +540,7 @@ def _handle_webhook():
                 else:
                     tg("sendMessage", {
                         "chat_id": chat_id,
-                        "text": "All set! You can contact any tutor via the WhatsApp link on the cards. 🌟"
+                        "text": "All set! Now you can contact the Kuwait IGCSE Portal via the WhatsApp link on the tutor card(s). 🌟"
                     })
                 return jsonify({"ok": True})
 
