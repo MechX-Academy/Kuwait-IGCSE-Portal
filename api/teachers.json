@@ -166,13 +166,13 @@
     }
   },
   {
-    "id": "t_moustafa_al_sayed",
-    "name": "Eng. Moustafa Al Sayed",
-    "subjects": ["Math"],
+    "id": "t_fady_al_fahdy",
+    "name": "Eng. Fady Al Fahdy",
+    "subjects": ["English"],
     "grades": [6, 7, 8, 9],
-    "boards": ["Cambridge", "Edexcel"],
-    "bio": "Mechatronics Engineer (GUC). Teaches Math Foundation (Grades 6–9). Also experienced with physics/control/circuits/mechanics and MATLAB/Simulink support.",
-    "qualifications": ["Mechatronics Engineer (GUC)", "IGCSE Math Foundation Tutor"],
+    "boards": ["Cambridge", "Oxford"],
+    "bio": "English IGCSE Ol ( Cambridge & Oxford ) (Grades 6–9).",
+    "qualifications": ["English IGCSE Ol ( Cambridge & Oxford ) (Grades 6–9)."],
     "photo_url": "",
     "contact": {
       "phone": "+96597273411",
