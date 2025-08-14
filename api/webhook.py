@@ -193,7 +193,7 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
                 return out
     return out
 
-def build_wa_link(t: Dict[str,Any], parent_name: str, board: str, grade: int, subjects: List[str]) -> str:
+def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
     contact = t.get("contact", {}) or {}
     wa = (contact.get("whatsapp") or contact.get("phone") or "").strip()
     # normalize to wa.me/NNN
@@ -202,22 +202,32 @@ def build_wa_link(t: Dict[str,Any], parent_name: str, board: str, grade: int, su
     else:
         num = re.sub(r"\D+", "", wa)
         base = f"https://wa.me/{num}" if num else "https://wa.me/"
+
+    # --- الجديد: فلترة المواد على حسب مواد المدرس ---
+    teacher_subjs = set(t.get("_subjects_canon", set()) or [])
+    selected_set = set(subjects or [])
+    filtered_subjects = [s for s in subjects if s in teacher_subjs]  # يحافظ على ترتيب اختيار المستخدم
+    if not filtered_subjects:
+        # fallback احتياطي: لو مفيش تقاطع لأي سبب، استخدم subjects كما هي
+        filtered_subjects = subjects
+
     msg = (
-        f"Hello, this is {parent_name}.\n"
-        f"I'm interested in {t.get('name','the tutor')} for {', '.join(subjects)} "
+        f"Hello, this is {student_full_name}.\n"
+        f"I'm interested in {t.get('name','the tutor')} for {', '.join(filtered_subjects)} "
         f"(Board: {board}, Grade: {grade}).\n"
         f"Could you please share availability and fees?"
     )
     return f"{base}?text={quote(msg)}"
 
-def format_teacher_caption_html(t: Dict[str,Any], parent_name: str, board: str, grade: int, subjects: List[str]) -> str:
+
+def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
     quals = ", ".join(t.get("qualifications", []))
     boards = ", ".join(t.get("boards", []))
     grades = ""
     if t.get("grades"):
         gmin, gmax = min(t["grades"]), max(t["grades"])
         grades = f"Grades {gmin}-{gmax}"
-    wa_link = build_wa_link(t, parent_name, board, grade, subjects)
+    wa_link = build_wa_link(t, student_full_name, board, grade, subjects)
     lines = [
         f"<b>{h(t['name'])}</b> — {h(', '.join(t.get('subjects', [])))}",
         "  " + " | ".join([x for x in [h(grades), f"Boards {h(boards)}" if boards else ""] if x]),
@@ -489,7 +499,7 @@ def _handle_webhook():
                 board = BOARD_CODES.get(s.get("board_code", b), b)
                 grade = s.get("grade", g)
                 subjects = s.get("subjects", [])
-                parent_name = s.get("name") or "Parent"
+                student_full_name = s.get("name") or "Parent"
 
                 signature = f"FINAL|{msg_id}|{board}|{grade}|{'.'.join(subjects)}"
                 if already_done(chat_id, signature):
@@ -497,16 +507,16 @@ def _handle_webhook():
                     return jsonify({"ok": True})
 
                 matches = collect_best_matches(subjects, grade, board, k=4)
-                first_photo = matches[0].get("photo_url") if matches and matches[0].get("photo_url") else None
-                overview = build_overview_text(board, grade, subjects, first_photo)
-                tg("sendMessage", {
-                    "chat_id": chat_id, "text": overview, "parse_mode": "HTML",
-                    "disable_web_page_preview": False
-                })
+                #first_photo = matches[0].get("photo_url") if matches and matches[0].get("photo_url") else None
+                #overview = build_overview_text(board, grade, subjects, first_photo)
+                #tg("sendMessage", {
+                #    "chat_id": chat_id, "text": overview, "parse_mode": "HTML",
+                #    "disable_web_page_preview": False
+                #})
 
                 # Send each tutor as photo+caption
                 for t in matches:
-                    caption = format_teacher_caption_html(t, parent_name, board, grade, subjects)
+                    caption = format_teacher_caption_html(t, student_full_name, board, grade, subjects)
                     photo = t.get("photo_url")
                     if photo:
                         tg("sendPhoto", {
