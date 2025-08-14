@@ -6,10 +6,9 @@ import requests
 
 app = Flask(__name__)
 
-# ====== ENV ======
 PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
 GS_WEBHOOK = (os.getenv("GS_WEBHOOK") or "").strip()
-GS_SECRET  = (os.getenv("GS_SECRET") or "").strip()
+GS_SECRET  = (os.getenv("GS_SECRET")  or "").strip()
 
 def push_event(event_type: str, payload: dict):
     if not GS_WEBHOOK or not GS_SECRET:
@@ -37,7 +36,6 @@ def wa_redirect():
     except Exception:
         return jsonify({"ok": False, "error": "bad token"}), 400
 
-    # log click
     push_event("whatsapp_click", {
         "user_id": data.get("user_id"),
         "username": data.get("username") or "",
@@ -49,7 +47,6 @@ def wa_redirect():
     text = data.get("text") or ""
     return redirect(f"https://wa.me/{wa}?text={quote(text)}", code=302)
 
-# Fallback for other HTTP verbs
 @app.route("/api/wa", methods=["POST", "PUT", "DELETE", "PATCH"])
 def wa_methods():
     return jsonify({"ok": True})
