@@ -6,7 +6,7 @@ import requests
 from urllib.parse import quote
 
 app = Flask(__name__)
-BUILD_TAG = "kuwait-igcse-portal-v2.0"
+BUILD_TAG = "kuwait-igcse-portal-v2.1"
 
 # ------------ Telegram basics ------------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -51,7 +51,7 @@ except Exception as e:
 
 # ------------ Subject dictionaries ------------
 VALID_SUBJECTS = {
-    "math": ["math", "mathematics", "additional math", "further math"],
+    "math": ["math", "mathematics", "maths", "additional math", "further math", "igcse mathematics"],
     "physics": ["physics", "phys"],
     "chemistry": ["chemistry", "chem"],
     "biology": ["biology", "bio"],
@@ -137,26 +137,58 @@ def h(x: str) -> str:
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
+def _nice_subject_name(key: str) -> str:
+    nice = {
+        "ict": "ICT",
+        "cs": "Computer Science",
+        "pe": "Physical Education",
+        "english language": "English Language",
+        "english literature": "English Literature",
+        "math": "Math",
+    }
+    return nice.get(key, key.title())
+
 def canonical_subject(label: str) -> str | None:
+    """
+    Normalize subject labels in a strict-but-robust way:
+    - accept exact matches OR word-boundary contains (e.g., 'IGCSE Mathematics' -> 'Math')
+    - avoid fuzzy mismatches by requiring whole-word match from our alias pool
+    """
     t = _norm(label)
+    if not t:
+        return None
+
+    # clean punctuation to spaces and compress spaces
+    t_clean = re.sub(r"[^a-z0-9\s&]+", " ", t)
+    t_clean = re.sub(r"\s+", " ", t_clean).strip()
+
     for canonical, aliases in VALID_SUBJECTS.items():
         pool = [canonical] + aliases
-        if any(_norm(x) == t for x in pool):
-            nice = {
-                "ict": "ICT",
-                "cs": "Computer Science",
-                "pe": "Physical Education",
-                "english language": "English Language",
-                "english literature": "English Literature",
-                "math": "Math",
-            }
-            key = canonical.lower()
-            return nice.get(key, canonical.title())
+        pool_norm = [_norm(x) for x in pool]
+
+        # 1) exact equality
+        if any(t_clean == p for p in pool_norm):
+            return _nice_subject_name(canonical.lower())
+
+        # 2) word-boundary contains
+        for alias in pool_norm:
+            if re.search(rf"\b{re.escape(alias)}\b", t_clean):
+                return _nice_subject_name(canonical.lower())
     return None
 
-# preprocess teacher canonical subjects
+def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
+    wanted = canonical_subject(wanted_label)
+    if not wanted:
+        return False
+    for s in teacher_subjects or []:
+        c = canonical_subject(s)
+        if c == wanted:
+            return True
+    return False
+
+# (Optional) precompute canonical sets for later use in captions/filters
 for t in TEACHERS:
-    subj = t.get("subjects", [])
+    subj = t.get("subjects", []) or []
     t["_subjects_canon"] = set()
     for s in subj:
         c = canonical_subject(s)
@@ -164,11 +196,10 @@ for t in TEACHERS:
             t["_subjects_canon"].add(c)
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
-    """Strict subject matching; score by grade + board."""
+    """Strict-by-meaning subject matching; score by grade + board."""
     results = []
-    wanted = canonical_subject(subject) if subject else None
     for t in TEACHERS:
-        if wanted and wanted not in t.get("_subjects_canon", set()):
+        if subject and not teacher_has_subject(t.get("subjects", []), subject):
             continue
         score = 0
         if grade and t.get("grades") and grade in t["grades"]:
@@ -207,7 +238,7 @@ def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: i
         base = f"https://wa.me/{num}" if num else f"https://wa.me/{PORTAL_WA_NUMBER}"
 
     teacher_subjs = set(t.get("_subjects_canon", set()) or [])
-    filtered_subjects = [s for s in subjects if s in teacher_subjs]  # keep user order
+    filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs]  # keep user order
     if not filtered_subjects:
         filtered_subjects = subjects  # fallback
 
@@ -458,7 +489,6 @@ def _handle_webhook():
                     return jsonify({"ok": True})
 
                 # Collect matches per selection, keep mapping to selection
-                # Also aggregate per teacher for later checkbox list
                 per_teacher_map: Dict[str, Dict[str, Any]] = {}  # tid -> {id,name,parts:[{subjects,board,grade}]}
                 ordered_cards: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []  # [(teacher, sel), ...]
 
@@ -480,7 +510,7 @@ def _handle_webhook():
                             "grade": sel["grade"]
                         })
 
-                # Send cards (photo+caption) without any overview/preview
+                # Send cards (photo+caption)
                 student_name = s.get("name") or "Parent"
                 for t, sel in ordered_cards:
                     caption = format_teacher_caption_html(
