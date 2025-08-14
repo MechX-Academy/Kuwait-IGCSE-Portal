@@ -44,7 +44,7 @@
     "name": "Eng. Mohamed Ahmed Khamis",
     "subjects": ["Math"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Edexcel"],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "15+ years teaching IGCSE/AS/A2 Mathematics (Cambridge & Edexcel). Small groups, full syllabus coverage, organized notes, and intensive past-paper practice.",
     "qualifications": ["IGCSE/AS/A2 Mathematics Tutor"],
     "photo_url": "",
@@ -52,11 +52,11 @@
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Math": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "Math": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
@@ -64,7 +64,7 @@
     "name": "Eng. Ahmad Saeed",
     "subjects": ["Physics"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Edexcel"],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Physics tutor for IGCSE/AS/A2 (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Physics Tutor"],
     "photo_url": "",
@@ -72,11 +72,11 @@
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Physics": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
@@ -84,7 +84,7 @@
     "name": "Prof. Hany A. Maher Ibrahim",
     "subjects": ["ICT", "Computer Science"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Edexcel"],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Assistant Professor; 28+ years experience in ICT & Computer Science. PhD in Software Engineering.",
     "qualifications": ["PhD Software Engineering", "Assistant Professor", "IGCSE/AS/A2 ICT & CS Tutor"],
     "photo_url": "",
@@ -92,12 +92,12 @@
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "ICT": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] },
-      "Computer Science": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "ICT": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Computer Science": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
@@ -105,7 +105,7 @@
     "name": "Dr. Mona El Mistekawy",
     "subjects": ["Chemistry", "Environmental Management", "Combined Science"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Edexcel"],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "8+ years teaching Chemistry OL/AS/AL and Combined Science (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Chemistry Tutor"],
     "photo_url": "",
@@ -113,13 +113,13 @@
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Chemistry": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] },
-      "Environmental Management": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] },
-      "Combined Science": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "Chemistry": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Environmental Management": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Combined Science": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
@@ -127,7 +127,7 @@
     "name": "Dr. Gina Mories Rady",
     "subjects": ["Chemistry"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge"],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "IGCSE Chemistry tutor; one student ranked Top in the World (June 2022, Kuwait). ~7 years experience.",
     "qualifications": ["Pharmacist", "IGCSE Chemistry Tutor"],
     "photo_url": "",
@@ -135,11 +135,11 @@
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Chemistry": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "Chemistry": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
@@ -147,7 +147,7 @@
     "name": "Mrs. Marwa Abdel Naby",
     "subjects": ["Business", "Economics", "Environmental Management", "Travel & Tourism"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Edexcel"],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Business, Economics, Environmental Management, and Travel & Tourism for OL/AS/AL (all boards).",
     "qualifications": ["IGCSE/AS/A2 Tutor"],
     "photo_url": "",
@@ -155,34 +155,54 @@
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Business": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] },
-      "Economics": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] },
-      "Environmental Management": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] },
-      "Travel & Tourism": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "Business": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Economics": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Environmental Management": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Travel & Tourism": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
     "id": "t_fady_al_fahdy",
-    "name": "Eng. Fady Al Fahdy",
+    "name": "Mr. Fady Al Fahdy",
     "subjects": ["English"],
-    "grades": [6, 7, 8, 9],
-    "boards": ["Cambridge", "Oxford"],
-    "bio": "English IGCSE Ol ( Cambridge & Oxford ) (Grades 6–9).",
-    "qualifications": ["English IGCSE Ol ( Cambridge & Oxford ) (Grades 6–9)."],
+    "grades": [10, 11, 12],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "bio": "English IGCSE Teacher.",
+    "qualifications": ["English IGCSE Teacher."],
     "photo_url": "",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
     },
-    "modes": ["1to1", "group"],
-    "weekly_lessons_supported": [1, 2],
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Math": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "English": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   }
+ {
+    "id": "t_hussien_khaled",
+    "name": "Mr. Hussien Khaled",
+    "subjects": ["Physics"],
+    "grades": [10, 11, 12],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "bio": "Phyiscs IGCSE Teacher.",
+    "qualifications": ["Physics IGCSE Teacher."],
+    "photo_url": "",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    },
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
+    "group_size_max": 6,
+    "subject_prefs": {
+      "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
+    }
+  } 
 ]
