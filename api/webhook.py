@@ -705,7 +705,13 @@ def _handle_webhook():
                         if not any((t2.get("id") or t2["name"]) == tid for (t2, _) in ordered_cards):
                             ordered_cards.append((t, sel))
                         entry = per_teacher_map.setdefault(tid, {"id": tid, "name": t["name"], "parts": []})
-                        entry["parts"].append({"subjects": sel["subjects"], "board": board_name_display, "grade": sel["grade"]})
+                        # ✅ مرّر prefs لكل selection
+                        entry["parts"].append({
+                            "subjects": sel["subjects"],
+                            "board": board_name_display,
+                            "grade": sel["grade"],
+                            "prefs": sel.get("prefs", {})  # << هنا
+                        })
 
                 student_name = s.get("name") or "Student"
                 for t, sel in ordered_cards:
@@ -756,55 +762,70 @@ def _handle_webhook():
                 if not sel_ids:
                     tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Pick at least one tutor."})
                     return jsonify({"ok": True})
-
+            
                 per_teacher_map = s.get("per_teacher_map", {})
                 chosen = [per_teacher_map[tid] for tid in sel_ids if tid in per_teacher_map]
-
+            
+                # دالة تنسيق التفضيلات لكل مادة
+                def fmt_pref(p):
+                    if not p:
+                        return ""
+                    m = "1:1" if p.get("mode") == "1:1" else ("Group" if p.get("mode") == "group" else None)
+                    w = p.get("lpw")
+                    parts = []
+                    if m:
+                        parts.append(m)
+                    if w:
+                        parts.append(f"{w}/wk")
+                    return f" [{', '.join(parts)}]" if parts else ""
+            
+                # بداية الرسالة
                 msg_lines = [f"Hello, this is {s.get('name','Student')}.\nI'm interested in the following:"]
+            
                 for item in chosen:
                     name = item["name"]
-                    parts = item["parts"]
-                    collapsed: Dict[Tuple[str,int], Set[str]] = {}
-                    for p in parts:
-                        key = (p["board"], p["grade"])
-                        collapsed.setdefault(key, set()).update(p["subjects"])
-                    sub_parts = []
-                    for (board, grade), subjset in collapsed.items():
-                        sub_parts.append(f"{', '.join(sorted(subjset))} - {board} Grade {grade}")
-                    msg_lines.append(f"- {name} ({' | '.join(sub_parts)})")
-
+                    sub_lines = []
+                    for part in item["parts"]:
+                        board = part["board"]
+                        grade = part["grade"]
+                        prefs = part.get("prefs", {})  # جاي من selection["prefs"]
+                        subj_bits = []
+                        for subj in part.get("subjects", []):
+                            subj_bits.append(f"{subj}{fmt_pref(prefs.get(subj))}")
+                        if subj_bits:
+                            sub_lines.append(f"{', '.join(subj_bits)} - {board} Grade {grade}")
+                    if sub_lines:
+                        msg_lines.append(f"- {name} ({' | '.join(sub_lines)})")
+            
                 msg_lines.append("Could you please share availability and fees?")
                 final_msg = "\n".join(msg_lines)
-
-                # ضيف تفضيلات الدروس (اتجمعت بعد الـ subjects)
-                prefs = []
-                if s.get("mode"):
-                    prefs.append(f"Lesson type: {'One-to-One' if s['mode']=='1:1' else 'Group'}")
-                if s.get("lessons_per_week"):
-                    prefs.append(f"Lessons/week: {s['lessons_per_week']}")
-                if prefs:
-                    final_msg += "\n" + "\n".join(prefs)
-
+            
                 # 🔗 استخدم /api/wa للتتبّع
-                # ملاحظة: username و user_id اتاخدوا من callback_query.from فوق
                 wa_link = build_wa_redirect_link(
-                    user_id=user_id,
-                    username=username,
-                    teacher_id=None,
-                    wa_number=PORTAL_WA_NUMBER,
+                    user_id=user_id,            # متعرفة فوق من callback_query.from
+                    username=username,          # متعرفة فوق من callback_query.from
+                    teacher_id=None,            # هنا بنبعت لرقم البوابة الموحد
+                    wa_number=PORTAL_WA_NUMBER, # من الـ env
                     prefill_text=final_msg
                 )
-
+            
+                # (اختياري) لوج للأناليتكس
+                push_event("send_wa", {
+                    "user_id": user_id,
+                    "username": username,
+                    "selections": s.get("selections", [])
+                })
+            
                 tg("sendMessage", {
                     "chat_id": chat_id,
-                    "text": f"<a href=\"{wa_link}\">📩 Open WhatsApp</a>",
+                    "text": f'<a href="{wa_link}">📩 Open WhatsApp</a>',
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
                     "reply_markup": kb_with_restart({"inline_keyboard": []})
                 })
                 return jsonify({"ok": True})
 
-            return jsonify({"ok": True})
+
 
         # ---------- Normal messages (/start, name, fallback) ----------
         msg = update.get("message") or update.get("edited_message")
