@@ -55,8 +55,9 @@ VALID_SUBJECTS = {
     "physics": ["physics", "phys"],
     "chemistry": ["chemistry", "chem"],
     "biology": ["biology", "bio"],
-    "english language": ["english", "english language", "esl", "first language english", "second language english"],
-    "english literature": ["english literature", "literature"],
+    # ↓↓↓ أضف "english sl" و "english fl" كمترادفات
+    "english language": ["english", "english language", "esl", "first language english", "second language english", "english sl"],
+    "english literature": ["english literature", "literature", "english fl"],
     "computer science": ["computer science", "cs"],
     "ict": ["ict", "information and communication technology"],
     "business": ["business", "business studies"],
@@ -73,13 +74,17 @@ VALID_SUBJECTS = {
     "environmental management": ["environmental management", "em"],
     "physical education": ["pe", "physical education"],
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
+    # ↓↓↓ جديد
+    "psychology": ["psychology", "psy"],
 }
+
 
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
         ("MTH", "Mathematics"),
-        ("ENL", "English Language"),
-        ("ENLIT", "English Literature"),
+        # ↓↓↓ تغيير العرض فقط
+        ("ENL", "English SL"),
+        ("ENLIT", "English FL"),
         ("BIO", "Biology"),
         ("CHE", "Chemistry"),
         ("PHY", "Physics"),
@@ -103,12 +108,27 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
         ("PE", "Physical Education (PE)"),
         ("TT", "Travel & Tourism"),
     ],
+    # ↓↓↓ الكاتيجوري الجديد
+    "Cambridge & Edexcel AS & A Level Subjects": [
+        ("MTH", "Mathematics"),
+        ("PHY", "Physics"),
+        ("CHE", "Chemistry"),
+        ("BIO", "Biology"),
+        ("BUS", "Business"),
+        ("ECO", "Economics"),
+        ("PSY", "Psychology"),
+        ("SOC", "Sociology"),
+        # تقدر تخلّيها "English Literature" زي ما كتبت، أو توحّد العرض كـ "English FL"
+        ("ENLIT", "English Literature"),
+    ],
 }
+
 
 CODE_TO_SUBJECT = {
     "MTH": "Math",
-    "ENL": "English Language",
-    "ENLIT": "English Literature",
+    # ↓↓↓ تغيير التسمية المعروضة
+    "ENL": "English SL",
+    "ENLIT": "English FL",
     "BIO": "Biology",
     "CHE": "Chemistry",
     "PHY": "Physics",
@@ -125,7 +145,10 @@ CODE_TO_SUBJECT = {
     "EM": "Environmental Management",
     "PE": "Physical Education",
     "TT": "Travel & Tourism",
+    # ↓↓↓ جديد
+    "PSY": "Psychology",
 }
+
 
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
@@ -408,12 +431,28 @@ def _handle_webhook():
                 b = data.split("|", 1)[1]
                 s = session(chat_id)
                 s["board_code"] = b
+            
+                # لو الـ grade متسجّل قبل كده، نروح مباشرة لاختيار المواد بنفس الـ grade
+                if isinstance(s.get("grade"), int):
+                    g = s["grade"]
+                    sel = set()
+                    tg("editMessageText", {
+                        "chat_id": chat_id, "message_id": msg_id,
+                        "text": summary_text(b, g, sel),
+                        "parse_mode": "HTML",
+                        "reply_markup": kb_with_restart(kb_subjects(b, g, sel))
+                    })
+                    return jsonify({"ok": True})
+            
+                # أول مرة: اطلب الـ grade
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": "🔢 <b>Step 2/3 – Grade</b>\nSelect your current grade:",
-                    "parse_mode": "HTML", "reply_markup": kb_with_restart(kb_grade(b))
+                    "parse_mode": "HTML",
+                    "reply_markup": kb_with_restart(kb_grade(b))
                 })
                 return jsonify({"ok": True})
+
 
             # Grade chosen
             if data.startswith("G|"):
