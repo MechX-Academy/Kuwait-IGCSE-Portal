@@ -6,7 +6,7 @@ import requests
 from urllib.parse import quote
 
 app = Flask(__name__)
-BUILD_TAG = "kuwait-igcse-portal-v2.2"
+BUILD_TAG = "kuwait-igcse-portal-v2.3"
 
 # ------------ Telegram basics ------------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -16,6 +16,10 @@ BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else
 
 # WhatsApp number for the final unified portal link
 PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
+
+# Inactivity timeout (seconds) before nudging with Restart
+INACTIVITY_SECS = int(os.getenv("INACTIVITY_SECS", "300"))  # default 5 minutes
+
 
 def tg(method: str, payload: Dict[str, Any]):
     """Safe Telegram call with light logging."""
@@ -157,17 +161,13 @@ def canonical_subject(label: str) -> str | None:
     t = _norm(label)
     if not t:
         return None
-
     t_clean = re.sub(r"[^a-z0-9\s&]+", " ", t)
     t_clean = re.sub(r"\s+", " ", t_clean).strip()
-
     for canonical, aliases in VALID_SUBJECTS.items():
         pool = [canonical] + aliases
         pool_norm = [_norm(x) for x in pool]
-
         if any(t_clean == p for p in pool_norm):
             return _nice_subject_name(canonical.lower())
-
         for alias in pool_norm:
             if re.search(rf"\b{re.escape(alias)}\b", t_clean):
                 return _nice_subject_name(canonical.lower())
@@ -183,6 +183,7 @@ def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
             return True
     return False
 
+# Precompute canonical subjects per teacher
 for t in TEACHERS:
     subj = t.get("subjects", []) or []
     t["_subjects_canon"] = set()
@@ -192,22 +193,35 @@ for t in TEACHERS:
             t["_subjects_canon"].add(c)
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
-    """Strict-by-meaning subject matching; score by grade + board."""
+    """
+    STRICT matching: teacher must teach the SUBJECT, support the GRADE,
+    and cover the BOARD. No fallbacks.
+    """
     results = []
     for t in TEACHERS:
+        # 1) subject must match (using canonical/aliases logic)
         if subject and not teacher_has_subject(t.get("subjects", []), subject):
             continue
-        score = 0
-        if grade and t.get("grades") and grade in t["grades"]:
-            score += 50
-        if board and t.get("boards") and any(_norm(board) == _norm(b) for b in t["boards"]):
-            score += 50
-        results.append((score, t))
-    results.sort(key=lambda x: x[0], reverse=True)
-    trimmed = [t for sc, t in results if sc > 0]
-    if not trimmed:
-        trimmed = [t for _, t in results]
-    return trimmed[:limit]
+
+        # 2) grade must be supported
+        if grade is not None:
+            grades = t.get("grades") or []
+            if grade not in grades:
+                continue
+
+        # 3) board must match (case-insensitive)
+        if board:
+            boards = t.get("boards") or []
+            if not any(_norm(board) == _norm(b) for b in boards):
+                continue
+
+        results.append(t)
+
+    # Organize the teachers by alphabetical names
+    results.sort(key=lambda tt: tt.get("name", "").lower())
+
+    return results[:limit]
+
 
 def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
     seen, out = set(), []
@@ -231,12 +245,10 @@ def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: i
     else:
         num = re.sub(r"\D+", "", wa)
         base = f"https://wa.me/{num}" if num else f"https://wa.me/{PORTAL_WA_NUMBER}"
-
     teacher_subjs = set(t.get("_subjects_canon", set()) or [])
     filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs]
     if not filtered_subjects:
         filtered_subjects = subjects
-
     msg = (
         f"Hello, this is {student_full_name}.\n"
         f"I'm interested in {t.get('name','the tutor')} for {', '.join(filtered_subjects)} "
@@ -262,15 +274,19 @@ def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board:
     lines.append(f'  <a href="{h(wa_link)}">WhatsApp</a>')
     return "\n".join(lines)
 
-def build_overview_text(board: str, grade: int, subjects: List[str], first_photo: str | None) -> str:
-    head = (
-        f"Thanks! Here are the best matches for:\n"
-        f"Board: <b>{h(board)}</b> | Grade: <b>{grade}</b>\n"
-        f"Subjects: <b>{h(', '.join(subjects))}</b>"
-    )
-    if first_photo:
-        return h(first_photo) + "\n\n" + head
-    return head
+# ------------ Restart helpers ------------
+def send_restart_prompt(chat_id: int):
+    """Send a nudge with a Restart button."""
+    tg("sendMessage", {
+        "chat_id": chat_id,
+        "text": "It’s been a while. Press <b>Restart</b> to begin again.",
+        "parse_mode": "HTML",
+        "reply_markup": {
+            "inline_keyboard": [
+                [{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}]
+            ]
+        }
+    })
 
 
 # ------------ Inline keyboards (board/grade/subjects) ------------
@@ -383,7 +399,31 @@ def _handle_webhook():
             data = cq.get("data", "")
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
+            # inactivity check on any callback
+            s = session(chat_id)
+            now = time.time()
+            last = s.get("last_seen", 0)
+            if (now - last) >= INACTIVITY_SECS and s.get("stage") != "ask_name" and not s.get("idle_prompt_sent"):
+                send_restart_prompt(chat_id)
+                s["idle_prompt_sent"] = True
+            s["last_seen"] = now
+
             if data == "noop":
+                return jsonify({"ok": True})
+
+            # Force restart
+            if data == "FORCE_RESTART":
+                SESSIONS[chat_id] = {
+                    "stage": "ask_name",
+                    "name": "",
+                    "selections": [],
+                    "last_seen": time.time(),
+                    "idle_prompt_sent": False
+                }
+                tg("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (student):",
+                })
                 return jsonify({"ok": True})
 
             # Board chosen
@@ -514,9 +554,14 @@ def _handle_webhook():
 
                 tg("sendMessage", {
                     "chat_id": chat_id,
-                    "text": "Select the tutors you're interested in, then press <b>Send WhatsApp Link</b>.",
+                    "text": "Select the tutors you're interested in, then press <b>Send WhatsApp Link</b>.\nNeed to start over? Press <b>Restart</b> below.",
                     "parse_mode": "HTML",
-                    "reply_markup": kb_select_teachers(s["last_matches"], s["selected_teachers"])
+                    "reply_markup": {
+                        "inline_keyboard": [
+                            *kb_select_teachers(s["last_matches"], s["selected_teachers"])["inline_keyboard"],
+                            [{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}]
+                        ]
+                    }
                 })
                 return jsonify({"ok": True})
 
@@ -526,10 +571,13 @@ def _handle_webhook():
                 sel_ids: Set[str] = s.setdefault("selected_teachers", set())
                 if tid in sel_ids: sel_ids.remove(tid)
                 else: sel_ids.add(tid)
+                # keep the Restart button visible under the list
+                rows = kb_select_teachers(s.get("last_matches", []), sel_ids)["inline_keyboard"]
+                rows.append([{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}])
                 tg("editMessageReplyMarkup", {
                     "chat_id": chat_id,
                     "message_id": msg_id,
-                    "reply_markup": kb_select_teachers(s.get("last_matches", []), sel_ids)
+                    "reply_markup": {"inline_keyboard": rows}
                 })
                 return jsonify({"ok": True})
 
@@ -579,9 +627,23 @@ def _handle_webhook():
         text = (msg.get("text") or "").strip()
         s = session(chat_id)
 
+        # inactivity check on any message
+        now = time.time()
+        last = s.get("last_seen", 0)
+        if (now - last) >= INACTIVITY_SECS and s.get("stage") != "ask_name" and not s.get("idle_prompt_sent"):
+            send_restart_prompt(chat_id)
+            s["idle_prompt_sent"] = True
+        s["last_seen"] = now
+
         if text.lower() in ("/start", "start"):
             # reset session & ask for student full name
-            SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
+            SESSIONS[chat_id] = {
+                "stage": "ask_name",
+                "name": "",
+                "selections": [],
+                "last_seen": time.time(),
+                "idle_prompt_sent": False
+            }
             tg("sendMessage", {
                 "chat_id": chat_id,
                 "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (student):",
@@ -591,6 +653,7 @@ def _handle_webhook():
         if s.get("stage") == "ask_name" and text:
             s["name"] = text
             s["stage"] = "flow"
+            s["idle_prompt_sent"] = False  # clear any prior nudge
             tg("sendMessage", {
                 "chat_id": chat_id,
                 "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum do you follow?",
@@ -603,13 +666,19 @@ def _handle_webhook():
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the guided flow 👇",
-            "reply_markup": kb_board()
+            "reply_markup": {
+                "inline_keyboard": [
+                    [{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}],
+                    *kb_board()["inline_keyboard"]
+                ]
+            }
         })
         return jsonify({"ok": True})
 
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
+        # return 200 so Telegram doesn't retry (avoids duplicates)
         return jsonify({"ok": True}), 200
 
 
