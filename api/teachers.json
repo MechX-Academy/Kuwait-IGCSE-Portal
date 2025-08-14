@@ -47,7 +47,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "15+ years teaching IGCSE/AS/A2 Mathematics (Cambridge & Edexcel). Small groups, full syllabus coverage, organized notes, and intensive past-paper practice.",
     "qualifications": ["IGCSE/AS/A2 Mathematics Tutor"],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/33/Eng.MohamedAhmedKhamis.jpg",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -67,7 +67,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Physics tutor for IGCSE/AS/A2 (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Physics Tutor"],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/7/72/ENG._AHMAD_SAEED.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -87,7 +87,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Assistant Professor; 28+ years experience in ICT & Computer Science. PhD in Software Engineering.",
     "qualifications": ["PhD Software Engineering", "Assistant Professor", "IGCSE/AS/A2 ICT & CS Tutor"],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/6/65/Prof.HanyA.Maher_Ibrahim.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -101,6 +101,26 @@
     }
   },
   {
+    "id": "t_yara_sadeq",
+    "name": "Dr.Yara Sadeq",
+    "subjects": ["Biology"],
+    "grades": [10, 11, 12],
+    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "bio": "Biology tutor for IGCSE/AS/A2 (Cambridge & Edexcel).",
+    "qualifications": ["IGCSE/AS/A2 Biology Tutor"],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/d/d2/Dr.YaraSadeq.png",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    },
+    "modes": ["group"],
+    "weekly_lessons_supported": [2],
+    "group_size_max": 6,
+    "subject_prefs": {
+      "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
+    }
+  },
+  {
     "id": "t_mona_el_mistekawy",
     "name": "Dr. Mona El Mistekawy",
     "subjects": ["Chemistry", "Environmental Management", "Combined Science"],
@@ -108,7 +128,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "8+ years teaching Chemistry OL/AS/AL and Combined Science (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Chemistry Tutor"],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/1/13/Dr.MonaElMistekawy.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -130,7 +150,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "IGCSE Chemistry tutor; one student ranked Top in the World (June 2022, Kuwait). ~7 years experience.",
     "qualifications": ["Pharmacist", "IGCSE Chemistry Tutor"],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/a/a5/Dr._Gina_MoriesRady.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -150,7 +170,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Business, Economics, Environmental Management, and Travel & Tourism for OL/AS/AL (all boards).",
     "qualifications": ["IGCSE/AS/A2 Tutor"],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Mrs.MarwaAbdelNaby.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -173,7 +193,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "English IGCSE Teacher.",
     "qualifications": ["English IGCSE Teacher."],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/7/72/FadyAlFahdy.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
@@ -193,7 +213,7 @@
     "boards": ["Cambridge", "Oxford", "Edexcel"],
     "bio": "Phyiscs IGCSE Teacher.",
     "qualifications": ["Physics IGCSE Teacher."],
-    "photo_url": "",
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/7/74/Mr.HussienKhaled.png",
     "contact": {
       "phone": "+96597273411",
       "whatsapp": "https://wa.me/96597273411"
