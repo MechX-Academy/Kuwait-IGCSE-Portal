@@ -6,7 +6,7 @@ import requests
 from urllib.parse import quote
 
 app = Flask(__name__)
-BUILD_TAG = "kuwait-igcse-portal-v2.7"
+BUILD_TAG = "kuwait-igcse-portal-v2.8"
 
 # ------------ Telegram basics ------------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -43,7 +43,7 @@ DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
 try:
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         TEACHERS = json.load(f)
-    print(f"Loaded {len(TEACHERS)} teachers.")
+    print(f"Loaded {len(TEACHERS)} teachers from {DATA_PATH}.")
 except Exception as e:
     print(f"ERROR loading teachers.json: {e}")
     TEACHERS = []
@@ -149,11 +149,7 @@ def _nice_subject_name(key: str) -> str:
     return nice.get(key, key.title())
 
 def canonical_subject(label: str) -> str | None:
-    """
-    Normalize subject labels in a strict-but-robust way:
-    - exact matches or word-boundary contains (e.g., 'IGCSE Mathematics' -> 'Math')
-    - no fuzzy matching beyond defined aliases
-    """
+    """Normalize subject labels."""
     t = _norm(label)
     if not t:
         return None
@@ -179,6 +175,18 @@ def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
             return True
     return False
 
+# --- Board normalization (handles "Oxford" vs "OxfordAQA") ---
+def canonical_board(label: str) -> str:
+    t = _norm(label)
+    # unify common representations
+    if t in ("o", "oxford", "oxfordaqa", "oxford aqa"):
+        return "oxfordaqa"
+    if t in ("c", "cambridge"):
+        return "cambridge"
+    if t in ("e", "edexcel", "pearson edexcel", "pearson"):
+        return "edexcel"
+    return t or ""
+
 # Precompute canonical subjects per teacher
 for t in TEACHERS:
     subj = t.get("subjects", []) or []
@@ -187,12 +195,15 @@ for t in TEACHERS:
         c = canonical_subject(s)
         if c:
             t["_subjects_canon"].add(c)
+    # also precompute canonical boards list for strict match
+    t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
     """
     STRICT matching: teacher must match SUBJECT + GRADE + BOARD.
     No fallbacks.
     """
+    board_can = canonical_board(board) if board else ""
     results = []
     for t in TEACHERS:
         # Subject mandatory
@@ -203,13 +214,12 @@ def match_teachers(subject=None, grade=None, board=None, limit=4):
             grades = t.get("grades") or []
             if grade not in grades:
                 continue
-        # Board mandatory
-        if board:
-            boards = t.get("boards") or []
-            if not any(_norm(board) == _norm(b) for b in boards):
+        # Board mandatory (canonicalized)
+        if board_can:
+            if board_can not in (t.get("_boards_canon") or []):
                 continue
         results.append(t)
-    # ترتيب أبجدي ثابت بالاسم
+    # ثابت بالاسم
     results.sort(key=lambda tt: tt.get("name", "").lower())
     return results[:limit]
 
@@ -496,14 +506,16 @@ def _handle_webhook():
                 ordered_cards: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
 
                 for sel in selections:
-                    board_name = BOARD_CODES.get(sel["board_code"], sel["board_code"])
-                    matches = collect_best_matches(sel["subjects"], sel["grade"], board_name, k=4)
+                    # Human-friendly board name for captions
+                    board_name_display = BOARD_CODES.get(sel["board_code"], sel["board_code"])
+                    # Strict match uses canonical inside match_teachers
+                    matches = collect_best_matches(sel["subjects"], sel["grade"], board_name_display, k=4)
                     for t in matches:
                         tid = t.get("id") or t["name"]
                         if not any((t2.get("id") or t2["name"]) == tid for (t2, _) in ordered_cards):
                             ordered_cards.append((t, sel))
                         entry = per_teacher_map.setdefault(tid, {"id": tid, "name": t["name"], "parts": []})
-                        entry["parts"].append({"subjects": sel["subjects"], "board": board_name, "grade": sel["grade"]})
+                        entry["parts"].append({"subjects": sel["subjects"], "board": board_name_display, "grade": sel["grade"]})
 
                 student_name = s.get("name") or "Student"
                 for t, sel in ordered_cards:
