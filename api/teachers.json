@@ -20,25 +20,25 @@
     }
   },
   {
-  "id": "t_sai_duenas",
-  "name": "Ms. Saí Dueñas",
-  "subjects": ["English Language"],
-  "grades": [7, 8, 9],
-  "boards": ["Cambridge"],
-  "bio": "Specialist in Cambridge First & Second Language English (Grades 7–9).",
-  "qualifications": ["IGCSE English Tutor"],
-  "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/30/Sai_Duenas.png",
-  "contact": {
-    "phone": "+96597273411",
-    "whatsapp": "https://wa.me/96597273411"
+    "id": "t_sai_duenas",
+    "name": "Ms. Saí Dueñas",
+    "subjects": ["English Language"],
+    "grades": [7, 8, 9],
+    "boards": ["Cambridge"],
+    "bio": "Specialist in Cambridge First & Second Language English (Grades 7–9).",
+    "qualifications": ["IGCSE English Tutor"],
+    "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/30/Sai_Duenas.png",
+    "contact": {
+      "phone": "+96597273411",
+      "whatsapp": "https://wa.me/96597273411"
+    },
+    "modes": ["1to1", "group"],
+    "weekly_lessons_supported": [1, 2],
+    "group_size_max": 6,
+    "subject_prefs": {
+      "English Language": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+    }
   },
-  "modes": ["1to1", "group"],
-  "weekly_lessons_supported": [1, 2],
-  "group_size_max": 6,
-  "subject_prefs": {
-    "English Language": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
-  }
-}
   {
     "id": "t_mohamed_ahmed_khamis",
     "name": "Eng. Mohamed Ahmed Khamis",
