@@ -1,7 +1,7 @@
 # api/webhook.py
 import os, json, re, time, html, traceback, base64
 from typing import Dict, Any, List, Tuple, Set
-from flask import Flask, request, jsonify, redirect, Response
+from flask import Flask, request, jsonify
 import requests
 from urllib.parse import quote
 
@@ -15,7 +15,6 @@ if not TELEGRAM_TOKEN:
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
 def tg(method: str, payload: Dict[str, Any]):
-    """Safe Telegram call with light logging."""
     if not BOT_API:
         print(f"[TG] skip {method} (no token)")
         return None
@@ -38,17 +37,14 @@ def tg(method: str, payload: Dict[str, Any]):
 PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
 PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "https://kuwait-igcse-portal-nu.vercel.app") or "").rstrip("/")
 
-# Google Sheets Analytics
 GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()  # https://script.google.com/.../exec
 GS_SECRET  = os.getenv("GS_SECRET", "").strip()   # نفس SECRET في Apps Script
 
 def push_event(event_type: str, payload: Dict[str, Any]):
-    """Fire-and-forget analytics (silent)."""
     if not GS_WEBHOOK or not GS_SECRET:
         return
     rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
     try:
-        # Apps Script يقرأ body كنص عبر e.postData.contents
         requests.post(GS_WEBHOOK, data=json.dumps(rec), timeout=4)
     except Exception as e:
         print("[ANALYTICS] push_event failed:", repr(e))
@@ -121,7 +117,7 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     ],
     "Other options": [
         ("EM", "Environmental Management"),
-        ("PE", "Physical Education (PE)"),
+        ("PE", "Physical Education"),
         ("TT", "Travel & Tourism"),
     ],
     "Cambridge & Edexcel AS & A Level Subjects": [
@@ -181,7 +177,6 @@ def _nice_subject_name(key: str) -> str:
     return nice.get(key, key.title())
 
 def canonical_subject(label: str) -> str | None:
-    """Normalize subject labels."""
     t = _norm(label)
     if not t:
         return None
@@ -207,7 +202,6 @@ def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
             return True
     return False
 
-# --- Board normalization (handles "Oxford" vs "OxfordAQA") ---
 def canonical_board(label: str) -> str:
     t = _norm(label)
     if t in ("o", "oxford", "oxfordaqa", "oxford aqa"):
@@ -229,26 +223,19 @@ for t in TEACHERS:
     t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
-    """
-    STRICT matching: teacher must match SUBJECT + GRADE + BOARD. No fallbacks.
-    """
     board_can = canonical_board(board) if board else ""
     results = []
     for t in TEACHERS:
-        # Subject mandatory
         if subject and not teacher_has_subject(t.get("subjects", []), subject):
             continue
-        # Grade mandatory
         if grade is not None:
             grades = t.get("grades") or []
             if grade not in grades:
                 continue
-        # Board mandatory (canonicalized)
         if board_can:
             if board_can not in (t.get("_boards_canon") or []):
                 continue
         results.append(t)
-    # stable alphabetical order
     results.sort(key=lambda tt: tt.get("name", "").lower())
     return results[:limit]
 
@@ -265,9 +252,8 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
                 return out
     return out
 
-# ------------ WhatsApp redirect (tracking) ------------
+# ------------ WhatsApp redirect link ------------
 def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_text):
-    import base64, json, re, os
     payload = {
         "user_id": user_id,
         "username": username or "",
@@ -275,53 +261,11 @@ def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_tex
         "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
         "text": prefill_text
     }
-    token = base64.urlsafe_b64encode(
-        json.dumps(payload, ensure_ascii=False).encode()
-    ).decode().rstrip("=")
-
+    token = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
     base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal-nu.vercel.app").rstrip("/")
     return f"{base}/api/wa?t={token}"
-
-
-@app.get("/api/wa")
-def wa_redirect():
-    t = request.args.get("t", "")
-    pad = "=" * (-len(t) % 4)
-    try:
-        data = json.loads(base64.urlsafe_b64decode((t + pad).encode()))
-    except Exception:
-        return "Bad token", 400
-
-    ip = _client_ip()
-    push_event("whatsapp_click", {
-        "user_id": data.get("user_id"),
-        "username": data.get("username") or "",
-        "teacher_id": data.get("teacher_id"),
-        "ip": ip
-    })
-
-    wa = re.sub(r"\D+", "", data.get("wa", "") or "") or PORTAL_WA_NUMBER
-    text = data.get("text", "") or ""
-    return redirect(f"https://wa.me/{wa}?text={quote(text)}", code=302)
 
 # ------------ Rendering ------------
-def build_wa_link(user_id, username, teacher_id, wa_number, prefill_text):
-    import base64, json, re, os
-    payload = {
-        "user_id": user_id,
-        "username": username or "",
-        "teacher_id": teacher_id,
-        "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
-        "text": prefill_text
-    }
-    token = base64.urlsafe_b64encode(
-        json.dumps(payload, ensure_ascii=False).encode()
-    ).decode().rstrip("=")
-
-    base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal-nu.vercel.app").rstrip("/")
-    return f"{base}/api/wa?t={token}"
-
-
 def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
     quals = ", ".join(t.get("qualifications", []))
     boards = ", ".join(t.get("boards", []))
@@ -335,10 +279,8 @@ def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board:
     ]
     if t.get("bio"):      lines.append("  " + h(t["bio"]))
     if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
-    # مفيش لينك واتساب هنا (UI زي ما هو)
     return "\n".join(lines)
 
-# Append a Restart button to any inline keyboard
 def kb_with_restart(markup: Dict[str, Any] | None) -> Dict[str, Any]:
     if not markup:
         markup = {"inline_keyboard": []}
@@ -346,7 +288,7 @@ def kb_with_restart(markup: Dict[str, Any] | None) -> Dict[str, Any]:
     rows.append([{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}])
     return {"inline_keyboard": rows}
 
-# ------------ Inline keyboards (board/grade/subjects) ------------
+# ------------ Keyboards ------------
 def encode_sel(sel: Set[str]) -> str:
     return ".".join(sorted(sel)) if sel else ""
 
@@ -390,36 +332,38 @@ def kb_subjects(board_code: str, grade: int, sel: Set[str]):
     rows.append([{"text": "⬅️ Back", "callback_data": f"G|{grade}|{board_code}"}])
     return {"inline_keyboard": rows}
 
-def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
-    board = BOARD_CODES.get(board_code, board_code)
-    chosen = ", ".join(h(CODE_TO_SUBJECT[c]) for c in sorted(sel)) if sel else "—"
-    return (f"<b>Step 3/3 – Subjects</b>\n"
-            f"Board: <b>{h(board)}</b>   |   Grade: <b>{grade}</b>\n"
-            f"Pick one or more subjects, then press <b>Done</b>.\n"
-            f"Selected: {chosen}")
+# Extra: lesson mode & lessons/week
+def kb_mode():
+    return {"inline_keyboard": [[
+        {"text": "👤 One‑to‑One", "callback_data": "MODE|1:1"},
+        {"text": "👥 Group",      "callback_data": "MODE|group"},
+    ],[
+        {"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}
+    ]]}
 
-# ------------ Selection of teachers (checkbox UI) ------------
-def kb_select_teachers(matches: List[Dict[str, Any]], selected_ids: Set[str]):
-    rows = []
-    def tick(tid): return "✅" if tid in selected_ids else "☐"
-    for t in matches:
-        rows.append([{
-            "text": f"{tick(t['id'])} {t['name']}",
-            "callback_data": f"SEL_TEACHER|{t['id']}"
-        }])
-    if not rows:
-        rows.append([{"text": "No matching results", "callback_data": "noop"}])
-    rows.append([{"text": "📩 Send WhatsApp Link", "callback_data": "SEND_WA"}])
-    rows.append([{"text": "➕ Add more subjects", "callback_data": "ADD_MORE"}])
+def kb_lpw():
+    rows, row = [], []
+    for n in [1,2,3,4,5]:
+        row.append({"text": f"{n}/week", "callback_data": f"LPW|{n}"})
+        if len(row) == 3:
+            rows.append(row); row=[]
+    if row: rows.append(row)
+    rows.append([{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}])
     return {"inline_keyboard": rows}
 
-# ------------ In-memory session & idempotency ------------
+# ------------ In-memory session ------------
 SESSIONS: Dict[int, Dict[str, Any]] = {}
 RECENT_DONE: Dict[int, List[Tuple[str, float]]] = {}
 
 def session(chat_id: int) -> Dict[str, Any]:
     if chat_id not in SESSIONS:
-        SESSIONS[chat_id] = {"stage": "idle", "name": "", "selections": []}
+        SESSIONS[chat_id] = {
+            "stage": "idle",
+            "name": "",
+            "selections": [],
+            "mode": None,
+            "lessons_per_week": None,
+        }
     return SESSIONS[chat_id]
 
 def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
@@ -459,9 +403,8 @@ def _handle_webhook():
             if data == "noop":
                 return jsonify({"ok": True})
 
-            # Force restart
             if data == "FORCE_RESTART":
-                SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
+                SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": [], "mode": None, "lessons_per_week": None}
                 tg("sendMessage", {
                     "chat_id": chat_id,
                     "text": "👋 Welcome to Kuwait IGCSE Portal!\nPlease type your full name (student):",
@@ -470,16 +413,44 @@ def _handle_webhook():
                 push_event("restart", {"user_id": user_id, "username": username})
                 return jsonify({"ok": True})
 
+            # Lesson mode
+            if data.startswith("MODE|"):
+                _, mode = data.split("|", 1)
+                s = session(chat_id)
+                s["mode"] = mode
+                push_event("mode", {"user_id": user_id, "username": username, "mode": mode})
+                s["stage"] = "ask_lpw"
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": "🗓️ How many lessons per week?",
+                    "reply_markup": kb_lpw()
+                })
+                return jsonify({"ok": True})
+
+            # Lessons per week
+            if data.startswith("LPW|"):
+                _, n = data.split("|", 1)
+                s = session(chat_id)
+                try:
+                    s["lessons_per_week"] = int(n)
+                except:
+                    s["lessons_per_week"] = None
+                push_event("lessons_per_week", {"user_id": user_id, "username": username, "lessons_per_week": s["lessons_per_week"]})
+                s["stage"] = "flow"
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": "🧭 <b>Step 1/3 – Board</b>\nChoose the board:",
+                    "parse_mode": "HTML",
+                    "reply_markup": kb_with_restart(kb_board())
+                })
+                return jsonify({"ok": True})
+
             # Board chosen
             if data.startswith("B|"):
                 b = data.split("|", 1)[1]
                 s = session(chat_id)
                 s["board_code"] = b
-
-                # analytics
                 push_event("board", {"user_id": user_id, "username": username, "board": BOARD_CODES.get(b,b)})
-
-                # لو الـ grade متسجّل قبل كده، نروح مباشرة لاختيار المواد بنفس الـ grade
                 if isinstance(s.get("grade"), int):
                     g = s["grade"]
                     sel = set()
@@ -490,8 +461,6 @@ def _handle_webhook():
                         "reply_markup": kb_with_restart(kb_subjects(b, g, sel))
                     })
                     return jsonify({"ok": True})
-
-                # أول مرة: اطلب الـ grade
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": "🔢 <b>Step 2/3 – Grade</b>\nSelect your current grade:",
@@ -508,10 +477,7 @@ def _handle_webhook():
                 s["board_code"] = b
                 s["grade"] = g
                 sel = set()
-
-                # analytics
                 push_event("grade", {"user_id": user_id, "username": username, "board": BOARD_CODES.get(b,b), "grade": g})
-
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": summary_text(b, g, sel),
@@ -553,13 +519,14 @@ def _handle_webhook():
                 }
                 s.setdefault("selections", []).append(selection)
 
-                # analytics
                 push_event("selection", {
                     "user_id": user_id,
                     "username": username,
                     "board": BOARD_CODES.get(b,b),
                     "grade": g,
-                    "subjects": selection["subjects"]
+                    "subjects": selection["subjects"],
+                    "mode": s.get("mode"),
+                    "lessons_per_week": s.get("lessons_per_week")
                 })
 
                 tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}})
@@ -579,7 +546,7 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Add more -> back to Step 1
+            # Add more
             if data == "ADD_MORE":
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
@@ -589,7 +556,7 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Show all tutors
+            # Show tutors
             if data == "SHOW_ALL":
                 s = session(chat_id)
                 selections = s.get("selections", [])
@@ -634,11 +601,10 @@ def _handle_webhook():
                     "parse_mode": "HTML",
                     "reply_markup": kb_with_restart(kb_select_teachers(s["last_matches"], s["selected_teachers"]))
                 })
-                # analytics
                 push_event("show_tutors", {"user_id": user_id, "username": username})
                 return jsonify({"ok": True})
 
-            # Toggle teacher selection
+            # Toggle teacher select
             if data.startswith("SEL_TEACHER|"):
                 _, tid = data.split("|", 1)
                 s = session(chat_id)
@@ -653,7 +619,7 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Send one WhatsApp link with all chosen tutors
+            # Send WA link
             if data == "SEND_WA":
                 s = session(chat_id)
                 sel_ids: Set[str] = s.get("selected_teachers", set())
@@ -680,7 +646,15 @@ def _handle_webhook():
                 msg_lines.append("Could you please share availability and fees?")
                 final_msg = "\n".join(msg_lines)
 
-                # استخدم redirect link لتسجيل النقرة ثم التحويل لواتساب
+                # add prefs
+                prefs = []
+                if s.get("mode"):
+                    prefs.append(f"Lesson type: {'One-to-One' if s['mode']=='1:1' else 'Group'}")
+                if s.get("lessons_per_week"):
+                    prefs.append(f"Lessons/week: {s['lessons_per_week']}")
+                if prefs:
+                    final_msg += "\n" + "\n".join(prefs)
+
                 wa_link = build_wa_redirect_link(
                     user_id=user_id,
                     username=username,
@@ -700,7 +674,7 @@ def _handle_webhook():
 
             return jsonify({"ok": True})
 
-        # ---------- Normal messages (/start, name, fallback) ----------
+        # ---------- Normal messages ----------
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
@@ -713,29 +687,40 @@ def _handle_webhook():
         username = u.get("username") or ""
 
         if text.lower() in ("/start", "start"):
-            # reset session & ask for student full name
-            SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
+            SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": [], "mode": None, "lessons_per_week": None}
             tg("sendMessage", {
                 "chat_id": chat_id,
                 "text": "👋 Welcome to Kuwait IGCSE Portal!\nPlease type your full name (student):",
                 "reply_markup": kb_with_restart({"inline_keyboard": []})
             })
-            # analytics
             push_event("session_start", {"user_id": user_id, "username": username})
             return jsonify({"ok": True})
 
         if s.get("stage") == "ask_name" and text:
             s["name"] = text
-            s["stage"] = "flow"
+            s["stage"] = "ask_mode"
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "🧭 <b>Step 1/3 – Board</b>\nChoose the board:",
-                "parse_mode": "HTML",
+                "text": "🎯 Lesson type?",
+                "reply_markup": kb_mode()
+            })
+            return jsonify({"ok": True})
+
+        if s.get("stage") in ("ask_mode", "ask_lpw"):
+            if s.get("stage") == "ask_mode":
+                tg("sendMessage", {"chat_id": chat_id, "text": "Please choose via buttons:", "reply_markup": kb_mode()})
+            else:
+                tg("sendMessage", {"chat_id": chat_id, "text": "Please choose lessons/week via buttons:", "reply_markup": kb_lpw()})
+            return jsonify({"ok": True})
+
+        if s.get("stage") == "flow":
+            tg("sendMessage", {
+                "chat_id": chat_id,
+                "text": "Please use the options below to continue 👇",
                 "reply_markup": kb_with_restart(kb_board())
             })
             return jsonify({"ok": True})
 
-        # Fallback: point user to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the options below to continue 👇",
@@ -746,7 +731,6 @@ def _handle_webhook():
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
-        # return 200 so Telegram doesn't retry (avoids duplicates)
         return jsonify({"ok": True}), 200
 
 # Vercel entrypoint
@@ -754,7 +738,7 @@ def _handle_webhook():
 def webhook_api():
     return _handle_webhook()
 
-# Catch-all (safety if Telegram hits root)
+# Catch-all
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook_catchall(subpath=None):
