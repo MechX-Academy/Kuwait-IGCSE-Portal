@@ -2,7 +2,7 @@
   {
     "id": "t_ahmed_fathy",
     "name": "Eng. Ahmed Fathy",
-    "subjects": ["Math"],
+    "subjects": ["Math (Core)"],
     "grades": [7, 8, 9],
     "boards": ["Cambridge"],
     "bio": "Specialist in IGCSE Cambridge Mathematics (Grades 7–9). Engaging lessons, practice with past exams.",
@@ -16,7 +16,7 @@
     "weekly_lessons_supported": [1, 2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Math": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
+      "Math (Core)": { "modes": ["1to1", "group"], "weekly_lessons_supported": [1, 2] }
     }
   },
   {
@@ -42,9 +42,9 @@
   {
     "id": "t_mohamed_ahmed_khamis",
     "name": "Eng. Mohamed Ahmed Khamis",
-    "subjects": ["Math"],
+    "subjects": ["Math (Core)", "Math (AS/A Level)"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "15+ years teaching IGCSE/AS/A2 Mathematics (Cambridge & Edexcel). Small groups, full syllabus coverage, organized notes, and intensive past-paper practice.",
     "qualifications": ["IGCSE/AS/A2 Mathematics Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/3/33/Eng.MohamedAhmedKhamis.jpg",
@@ -56,15 +56,16 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Math": { "modes": ["group"], "weekly_lessons_supported": [2] }
+      "Math (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Math (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
     "id": "t_ahmad_saeed",
     "name": "Eng. Ahmad Saeed",
-    "subjects": ["Physics"],
+    "subjects": ["Physics (Core)", "Physics (AS/A Level)"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "Physics tutor for IGCSE/AS/A2 (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Physics Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/7/72/ENG._AHMAD_SAEED.png",
@@ -76,7 +77,8 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
+      "Physics (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Physics (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
@@ -84,7 +86,7 @@
     "name": "Prof. Hany A. Maher Ibrahim",
     "subjects": ["ICT", "Computer Science"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "Assistant Professor; 28+ years experience in ICT & Computer Science. PhD in Software Engineering.",
     "qualifications": ["PhD Software Engineering", "Assistant Professor", "IGCSE/AS/A2 ICT & CS Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/6/65/Prof.HanyA.Maher_Ibrahim.png",
@@ -103,9 +105,9 @@
   {
     "id": "t_yara_sadeq",
     "name": "Dr.Yara Sadeq",
-    "subjects": ["Biology"],
+    "subjects": ["Biology (Core)", "Biology (AS/A Level)"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "Biology tutor for IGCSE/AS/A2 (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Biology Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/d/d2/Dr.YaraSadeq.png",
@@ -117,15 +119,16 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
+      "Biology (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Biology (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
     "id": "t_mona_el_mistekawy",
     "name": "Dr. Mona El Mistekawy",
-    "subjects": ["Chemistry", "Environmental Management", "Combined Science"],
+    "subjects": ["Chemistry (Core)", "Chemistry (AS/A Level)", "Environmental Management", "Combined Science"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "8+ years teaching Chemistry OL/AS/AL and Combined Science (Cambridge & Edexcel).",
     "qualifications": ["IGCSE/AS/A2 Chemistry Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/1/13/Dr.MonaElMistekawy.png",
@@ -137,7 +140,8 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Chemistry": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Chemistry (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Chemistry (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] },
       "Environmental Management": { "modes": ["group"], "weekly_lessons_supported": [2] },
       "Combined Science": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
@@ -145,9 +149,9 @@
   {
     "id": "t_gina_mories_rady",
     "name": "Dr. Gina Mories Rady",
-    "subjects": ["Chemistry"],
+    "subjects": ["Chemistry (Core)", "Chemistry (AS/A Level)"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "IGCSE Chemistry tutor; one student ranked Top in the World (June 2022, Kuwait). ~7 years experience.",
     "qualifications": ["Pharmacist", "IGCSE Chemistry Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/a/a5/Dr._Gina_MoriesRady.png",
@@ -159,15 +163,16 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Chemistry": { "modes": ["group"], "weekly_lessons_supported": [2] }
+      "Chemistry (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Chemistry (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
     "id": "t_marwa_abdel_naby",
     "name": "Mrs. Marwa Abdel Naby",
-    "subjects": ["Business", "Economics", "Environmental Management", "Travel & Tourism"],
+    "subjects": ["Business (Core)", "Business (AS/A Level)", "Economics (Core)", "Economics (AS/A Level)", "Environmental Management", "Travel & Tourism"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "Business, Economics, Environmental Management, and Travel & Tourism for OL/AS/AL (all boards).",
     "qualifications": ["IGCSE/AS/A2 Tutor"],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/4/4b/Mrs.MarwaAbdelNaby.png",
@@ -179,8 +184,10 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Business": { "modes": ["group"], "weekly_lessons_supported": [2] },
-      "Economics": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Business (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Business (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Economics (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Economics (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] },
       "Environmental Management": { "modes": ["group"], "weekly_lessons_supported": [2] },
       "Travel & Tourism": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
@@ -188,9 +195,9 @@
   {
     "id": "t_fady_al_fahdy",
     "name": "Mr. Fady Al Fahdy",
-    "subjects": ["English"],
+    "subjects": ["English Language"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "English IGCSE Teacher.",
     "qualifications": ["English IGCSE Teacher."],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/7/72/FadyAlFahdy.png",
@@ -202,15 +209,15 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "English": { "modes": ["group"], "weekly_lessons_supported": [2] }
+      "English Language": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   },
   {
     "id": "t_hussien_khaled",
     "name": "Mr. Hussien Khaled",
-    "subjects": ["Physics"],
+    "subjects": ["Physics (Core)", "Physics (AS/A Level)"],
     "grades": [10, 11, 12],
-    "boards": ["Cambridge", "Oxford", "Edexcel"],
+    "boards": ["Cambridge", "OxfordAQA", "Edexcel"],
     "bio": "Phyiscs IGCSE Teacher.",
     "qualifications": ["Physics IGCSE Teacher."],
     "photo_url": "https://upload.wikimedia.org/wikipedia/commons/7/74/Mr.HussienKhaled.png",
@@ -222,7 +229,8 @@
     "weekly_lessons_supported": [2],
     "group_size_max": 6,
     "subject_prefs": {
-      "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
+      "Physics (Core)": { "modes": ["group"], "weekly_lessons_supported": [2] },
+      "Physics (AS/A Level)": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
   }
 ]
