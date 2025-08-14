@@ -1,7 +1,7 @@
 # api/webhook.py
-import os, json, re, time, html, traceback
+import os, json, re, time, html, traceback, base64
 from typing import Dict, Any, List, Tuple, Set
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, Response
 import requests
 from urllib.parse import quote
 
@@ -13,9 +13,6 @@ TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
 if not TELEGRAM_TOKEN:
     print("WARNING: Missing TELEGRAM_BOT_TOKEN")
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
-
-# WhatsApp number for the final unified portal link
-PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
 
 def tg(method: str, payload: Dict[str, Any]):
     """Safe Telegram call with light logging."""
@@ -37,6 +34,30 @@ def tg(method: str, payload: Dict[str, Any]):
         print("[TG EXC]", method, repr(e))
         return None
 
+# ------------ Config ------------
+PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
+PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "https://kuwait-igcse-portal-nu.vercel.app") or "").rstrip("/")
+
+# Google Sheets Analytics
+GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()  # https://script.google.com/.../exec
+GS_SECRET  = os.getenv("GS_SECRET", "").strip()   # نفس SECRET في Apps Script
+
+def push_event(event_type: str, payload: Dict[str, Any]):
+    """Fire-and-forget analytics (silent)."""
+    if not GS_WEBHOOK or not GS_SECRET:
+        return
+    rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
+    try:
+        # Apps Script يقرأ body كنص عبر e.postData.contents
+        requests.post(GS_WEBHOOK, data=json.dumps(rec), timeout=4)
+    except Exception as e:
+        print("[ANALYTICS] push_event failed:", repr(e))
+
+def _client_ip():
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff and "," in xff:
+        return xff.split(",")[0].strip()
+    return xff or (request.remote_addr or "")
 
 # ------------ Load data ------------
 DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
@@ -48,14 +69,12 @@ except Exception as e:
     print(f"ERROR loading teachers.json: {e}")
     TEACHERS = []
 
-
 # ------------ Subject dictionaries ------------
 VALID_SUBJECTS = {
     "math": ["math", "mathematics", "maths", "additional math", "further math", "igcse mathematics"],
     "physics": ["physics", "phys"],
     "chemistry": ["chemistry", "chem"],
     "biology": ["biology", "bio"],
-    # ↓↓↓ أضف "english sl" و "english fl" كمترادفات
     "english language": ["english", "english language", "esl", "first language english", "second language english", "english sl"],
     "english literature": ["english literature", "literature", "english fl"],
     "computer science": ["computer science", "cs"],
@@ -74,15 +93,12 @@ VALID_SUBJECTS = {
     "environmental management": ["environmental management", "em"],
     "physical education": ["pe", "physical education"],
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
-    # ↓↓↓ جديد
     "psychology": ["psychology", "psy"],
 }
-
 
 SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
     "Core subjects": [
         ("MTH", "Mathematics"),
-        # ↓↓↓ تغيير العرض فقط
         ("ENL", "English SL"),
         ("ENLIT", "English FL"),
         ("BIO", "Biology"),
@@ -108,7 +124,6 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
         ("PE", "Physical Education (PE)"),
         ("TT", "Travel & Tourism"),
     ],
-    # ↓↓↓ الكاتيجوري الجديد
     "Cambridge & Edexcel AS & A Level Subjects": [
         ("MTH", "Mathematics"),
         ("PHY", "Physics"),
@@ -118,15 +133,12 @@ SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
         ("ECO", "Economics"),
         ("PSY", "Psychology"),
         ("SOC", "Sociology"),
-        # تقدر تخلّيها "English Literature" زي ما كتبت، أو توحّد العرض كـ "English FL"
         ("ENLIT", "English Literature"),
     ],
 }
 
-
 CODE_TO_SUBJECT = {
     "MTH": "Math",
-    # ↓↓↓ تغيير التسمية المعروضة
     "ENL": "English SL",
     "ENLIT": "English FL",
     "BIO": "Biology",
@@ -145,13 +157,10 @@ CODE_TO_SUBJECT = {
     "EM": "Environmental Management",
     "PE": "Physical Education",
     "TT": "Travel & Tourism",
-    # ↓↓↓ جديد
     "PSY": "Psychology",
 }
 
-
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
-
 
 # ------------ Helpers ------------
 def h(x: str) -> str:
@@ -256,8 +265,45 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
                 return out
     return out
 
+# ------------ WhatsApp redirect (tracking) ------------
+def build_wa_redirect_link(user_id: int, username: str, teacher_id: str | None, wa_number: str, prefill_text: str) -> str:
+    """Generate /wa?t=... to log click + redirect to wa.me"""
+    payload = {
+        "user_id": user_id,
+        "username": username or "",
+        "teacher_id": teacher_id,
+        "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
+        "text": prefill_text
+    }
+    token = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
+    if PUBLIC_BASE_URL:
+        return f"{PUBLIC_BASE_URL}/wa?t={token}"
+    return f"/wa?t={token}"
+
+@app.get("/wa")
+def wa_redirect():
+    t = request.args.get("t", "")
+    pad = "=" * (-len(t) % 4)
+    try:
+        data = json.loads(base64.urlsafe_b64decode((t + pad).encode()))
+    except Exception:
+        return "Bad token", 400
+
+    ip = _client_ip()
+    push_event("whatsapp_click", {
+        "user_id": data.get("user_id"),
+        "username": data.get("username") or "",
+        "teacher_id": data.get("teacher_id"),
+        "ip": ip
+    })
+
+    wa = re.sub(r"\D+", "", data.get("wa", "") or "") or PORTAL_WA_NUMBER
+    text = data.get("text", "") or ""
+    return redirect(f"https://wa.me/{wa}?text={quote(text)}", code=302)
+
+# ------------ Rendering ------------
 def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
-    """Build WA link PER TEACHER card: filter subjects to those taught by this teacher."""
+    """(محتفظين بيها لو حبيت تستخدم لينك مباشر في كارت المدرّس)"""
     contact = t.get("contact", {}) or {}
     wa = (contact.get("whatsapp") or contact.get("phone") or "").strip()
     if wa.startswith("https://wa.me/"):
@@ -266,9 +312,7 @@ def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: i
         num = re.sub(r"\D+", "", wa)
         base = f"https://wa.me/{num}" if num else f"https://wa.me/{PORTAL_WA_NUMBER}"
     teacher_subjs = set(t.get("_subjects_canon", set()) or [])
-    filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs]
-    if not filtered_subjects:
-        filtered_subjects = subjects
+    filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs] or subjects
     msg = (
         f"Hello, this is {student_full_name}.\n"
         f"I'm interested in {t.get('name','the tutor')} for {', '.join(filtered_subjects)} "
@@ -284,14 +328,13 @@ def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board:
     if t.get("grades"):
         gmin, gmax = min(t["grades"]), max(t["grades"])
         grades = f"Grades {gmin}-{gmax}"
-    wa_link = build_wa_link(t, student_full_name, board, grade, subjects)
     lines = [
         f"<b>{h(t['name'])}</b> — {h(', '.join(t.get('subjects', [])))}",
         "  " + " | ".join([x for x in [h(grades), f"Boards {h(boards)}" if boards else ""] if x]),
     ]
     if t.get("bio"):      lines.append("  " + h(t["bio"]))
     if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
-    # lines.append(f'  <a href="{h(wa_link)}">WhatsApp</a>')
+    # مفيش لينك واتساب هنا (UI زي ما هو)
     return "\n".join(lines)
 
 # Append a Restart button to any inline keyboard
@@ -301,7 +344,6 @@ def kb_with_restart(markup: Dict[str, Any] | None) -> Dict[str, Any]:
     rows = markup.get("inline_keyboard", [])
     rows.append([{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}])
     return {"inline_keyboard": rows}
-
 
 # ------------ Inline keyboards (board/grade/subjects) ------------
 def encode_sel(sel: Set[str]) -> str:
@@ -355,7 +397,6 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press <b>Done</b>.\n"
             f"Selected: {chosen}")
 
-
 # ------------ Selection of teachers (checkbox UI) ------------
 def kb_select_teachers(matches: List[Dict[str, Any]], selected_ids: Set[str]):
     rows = []
@@ -370,7 +411,6 @@ def kb_select_teachers(matches: List[Dict[str, Any]], selected_ids: Set[str]):
     rows.append([{"text": "📩 Send WhatsApp Link", "callback_data": "SEND_WA"}])
     rows.append([{"text": "➕ Add more subjects", "callback_data": "ADD_MORE"}])
     return {"inline_keyboard": rows}
-
 
 # ------------ In-memory session & idempotency ------------
 SESSIONS: Dict[int, Dict[str, Any]] = {}
@@ -393,12 +433,10 @@ def already_done(chat_id: int, signature: str, ttl: int = 300) -> bool:
     RECENT_DONE[chat_id] = lst
     return False
 
-
 # ------------ Routes ------------
 @app.get("/api/webhook")
 def ping():
     return jsonify(ok=True, build=BUILD_TAG, teachers=len(TEACHERS), bot=bool(BOT_API))
-
 
 def _handle_webhook():
     try:
@@ -413,6 +451,10 @@ def _handle_webhook():
             data = cq.get("data", "")
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
+            user_obj = cq.get("from", {}) or {}
+            user_id = user_obj.get("id")
+            username = user_obj.get("username") or ""
+
             if data == "noop":
                 return jsonify({"ok": True})
 
@@ -424,6 +466,7 @@ def _handle_webhook():
                     "text": "👋 Welcome to Kuwait IGCSE Portal!\nPlease type your full name (student):",
                     "reply_markup": kb_with_restart({"inline_keyboard": []})
                 })
+                push_event("restart", {"user_id": user_id, "username": username})
                 return jsonify({"ok": True})
 
             # Board chosen
@@ -431,7 +474,10 @@ def _handle_webhook():
                 b = data.split("|", 1)[1]
                 s = session(chat_id)
                 s["board_code"] = b
-            
+
+                # analytics
+                push_event("board", {"user_id": user_id, "username": username, "board": BOARD_CODES.get(b,b)})
+
                 # لو الـ grade متسجّل قبل كده، نروح مباشرة لاختيار المواد بنفس الـ grade
                 if isinstance(s.get("grade"), int):
                     g = s["grade"]
@@ -443,7 +489,7 @@ def _handle_webhook():
                         "reply_markup": kb_with_restart(kb_subjects(b, g, sel))
                     })
                     return jsonify({"ok": True})
-            
+
                 # أول مرة: اطلب الـ grade
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
@@ -453,7 +499,6 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-
             # Grade chosen
             if data.startswith("G|"):
                 _, g, b = data.split("|", 2)
@@ -462,6 +507,10 @@ def _handle_webhook():
                 s["board_code"] = b
                 s["grade"] = g
                 sel = set()
+
+                # analytics
+                push_event("grade", {"user_id": user_id, "username": username, "board": BOARD_CODES.get(b,b), "grade": g})
+
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": summary_text(b, g, sel),
@@ -502,6 +551,15 @@ def _handle_webhook():
                     "subjects": [CODE_TO_SUBJECT[c] for c in sel_codes]
                 }
                 s.setdefault("selections", []).append(selection)
+
+                # analytics
+                push_event("selection", {
+                    "user_id": user_id,
+                    "username": username,
+                    "board": BOARD_CODES.get(b,b),
+                    "grade": g,
+                    "subjects": selection["subjects"]
+                })
 
                 tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}})
                 tg("editMessageText", {
@@ -575,6 +633,8 @@ def _handle_webhook():
                     "parse_mode": "HTML",
                     "reply_markup": kb_with_restart(kb_select_teachers(s["last_matches"], s["selected_teachers"]))
                 })
+                # analytics
+                push_event("show_tutors", {"user_id": user_id, "username": username})
                 return jsonify({"ok": True})
 
             # Toggle teacher selection
@@ -618,7 +678,15 @@ def _handle_webhook():
 
                 msg_lines.append("Could you please share availability and fees?")
                 final_msg = "\n".join(msg_lines)
-                wa_link = f"https://wa.me/{PORTAL_WA_NUMBER}?text={quote(final_msg)}"
+
+                # استخدم redirect link لتسجيل النقرة ثم التحويل لواتساب
+                wa_link = build_wa_redirect_link(
+                    user_id=user_id,
+                    username=username,
+                    teacher_id=None,
+                    wa_number=PORTAL_WA_NUMBER,
+                    prefill_text=final_msg
+                )
 
                 tg("sendMessage", {
                     "chat_id": chat_id,
@@ -639,6 +707,9 @@ def _handle_webhook():
         chat_id = msg["chat"]["id"]
         text = (msg.get("text") or "").strip()
         s = session(chat_id)
+        u = msg.get("from", {}) or {}
+        user_id = u.get("id")
+        username = u.get("username") or ""
 
         if text.lower() in ("/start", "start"):
             # reset session & ask for student full name
@@ -648,6 +719,8 @@ def _handle_webhook():
                 "text": "👋 Welcome to Kuwait IGCSE Portal!\nPlease type your full name (student):",
                 "reply_markup": kb_with_restart({"inline_keyboard": []})
             })
+            # analytics
+            push_event("session_start", {"user_id": user_id, "username": username})
             return jsonify({"ok": True})
 
         if s.get("stage") == "ask_name" and text:
@@ -674,7 +747,6 @@ def _handle_webhook():
         print(traceback.format_exc())
         # return 200 so Telegram doesn't retry (avoids duplicates)
         return jsonify({"ok": True}), 200
-
 
 # Vercel entrypoint
 @app.post("/api/webhook")
