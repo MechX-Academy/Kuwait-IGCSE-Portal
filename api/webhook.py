@@ -266,8 +266,8 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
     return out
 
 # ------------ WhatsApp redirect (tracking) ------------
-def build_wa_redirect_link(user_id: int, username: str, teacher_id: str | None, wa_number: str, prefill_text: str) -> str:
-    """Generate /wa?t=... to log click + redirect to wa.me"""
+def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_text):
+    import base64, json, re, os
     payload = {
         "user_id": user_id,
         "username": username or "",
@@ -275,12 +275,15 @@ def build_wa_redirect_link(user_id: int, username: str, teacher_id: str | None, 
         "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
         "text": prefill_text
     }
-    token = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
-    if PUBLIC_BASE_URL:
-        return f"{PUBLIC_BASE_URL}/wa?t={token}"
-    return f"/wa?t={token}"
+    token = base64.urlsafe_b64encode(
+        json.dumps(payload, ensure_ascii=False).encode()
+    ).decode().rstrip("=")
 
-@app.get("/wa")
+    base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal-nu.vercel.app").rstrip("/")
+    return f"{base}/api/wa?t={token}"
+
+
+@app.get("/api/wa")
 def wa_redirect():
     t = request.args.get("t", "")
     pad = "=" * (-len(t) % 4)
@@ -302,24 +305,22 @@ def wa_redirect():
     return redirect(f"https://wa.me/{wa}?text={quote(text)}", code=302)
 
 # ------------ Rendering ------------
-def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
-    """(محتفظين بيها لو حبيت تستخدم لينك مباشر في كارت المدرّس)"""
-    contact = t.get("contact", {}) or {}
-    wa = (contact.get("whatsapp") or contact.get("phone") or "").strip()
-    if wa.startswith("https://wa.me/"):
-        base = wa
-    else:
-        num = re.sub(r"\D+", "", wa)
-        base = f"https://wa.me/{num}" if num else f"https://wa.me/{PORTAL_WA_NUMBER}"
-    teacher_subjs = set(t.get("_subjects_canon", set()) or [])
-    filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs] or subjects
-    msg = (
-        f"Hello, this is {student_full_name}.\n"
-        f"I'm interested in {t.get('name','the tutor')} for {', '.join(filtered_subjects)} "
-        f"(Board: {board}, Grade: {grade}).\n"
-        f"Could you please share availability and fees?"
-    )
-    return f"{base}?text={quote(msg)}"
+def build_wa_link(user_id, username, teacher_id, wa_number, prefill_text):
+    import base64, json, re, os
+    payload = {
+        "user_id": user_id,
+        "username": username or "",
+        "teacher_id": teacher_id,
+        "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
+        "text": prefill_text
+    }
+    token = base64.urlsafe_b64encode(
+        json.dumps(payload, ensure_ascii=False).encode()
+    ).decode().rstrip("=")
+
+    base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal-nu.vercel.app").rstrip("/")
+    return f"{base}/api/wa?t={token}"
+
 
 def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
     quals = ", ".join(t.get("qualifications", []))
