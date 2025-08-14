@@ -63,17 +63,44 @@ except Exception as e:
     TEACHERS = []
 
 # ------------ Subject dictionaries ------------
+# ✅ VALID_SUBJECTS بعد الفصل بين Core و AS/A Level للمواد المتشابهة
 VALID_SUBJECTS = {
-    "math": ["math", "mathematics", "maths", "additional math", "further math", "igcse mathematics"],
-    "physics": ["physics", "phys"],
-    "chemistry": ["chemistry", "chem"],
-    "biology": ["biology", "bio"],
+    # Math
+    "math (core)": [
+        "math (core)", "mathematics (core)", "maths (core)",
+        "additional math (core)", "further math (core)", "igcse mathematics (core)"
+    ],
+    "math (as/a level)": [
+        "math (as/a level)", "mathematics (as/a level)", "maths (as/a level)",
+        "additional math (as/a level)", "further math (as/a level)", "igcse mathematics (as/a level)"
+    ],
+
+    # Physics
+    "physics (core)": ["physics (core)", "phys (core)"],
+    "physics (as/a level)": ["physics (as/a level)", "phys (as/a level)"],
+
+    # Chemistry
+    "chemistry (core)": ["chemistry (core)", "chem (core)"],
+    "chemistry (as/a level)": ["chemistry (as/a level)", "chem (as/a level)"],
+
+    # Biology
+    "biology (core)": ["biology (core)", "bio (core)"],
+    "biology (as/a level)": ["biology (as/a level)", "bio (as/a level)"],
+
+    # English
     "english language": ["english", "english language", "esl", "first language english", "second language english", "english sl"],
     "english literature": ["english literature", "literature", "english fl"],
-    "computer science": ["computer science", "cs"],
-    "ict": ["ict", "information and communication technology"],
-    "business": ["business", "business studies"],
-    "economics": ["economics", "econ"],
+
+    # Business & Economics
+    "business (core)": ["business (core)", "business studies (core)"],
+    "business (as/a level)": ["business (as/a level)", "business studies (as/a level)"],
+    "economics (core)": ["economics (core)", "econ (core)"],
+    "economics (as/a level)": ["economics (as/a level)", "econ (as/a level)"],
+
+    # Psychology
+    "psychology (as/a level)": ["psychology (as/a level)", "psy (as/a level)"],
+
+    # باقي المواد اللي ملهاش Core/A Level
     "accounting": ["accounting", "accounts"],
     "geography": ["geography", "geo"],
     "history": ["history"],
@@ -86,60 +113,68 @@ VALID_SUBJECTS = {
     "environmental management": ["environmental management", "em"],
     "physical education": ["pe", "physical education"],
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
-    "psychology": ["psychology", "psy"],
+    "computer science": ["computer science", "cs"],
+    "ict": ["ict", "information and communication technology"],
 }
 
-SUBJECT_GROUPS: Dict[str, List[Tuple[str, str]]] = {
+# ✅ SUBJECT_GROUPS
+SUBJECT_GROUPS = {
     "Core subjects": [
-        ("MTH", "Mathematics"),
+        ("MTH_CORE", "Math (Core)"),
+        ("PHY_CORE", "Physics (Core)"),
+        ("CHE_CORE", "Chemistry (Core)"),
+        ("BIO_CORE", "Biology (Core)"),
         ("ENL", "English SL"),
         ("ENLIT", "English FL"),
-        ("BIO", "Biology"),
-        ("CHE", "Chemistry"),
-        ("PHY", "Physics"),
-        ("HUM", "Humanities & Social Sciences"),
-        ("BUS", "Business Studies"),
-        ("ECO", "Economics"),
+        ("BUS_CORE", "Business (Core)"),
+        ("ECO_CORE", "Economics (Core)"),
         ("ACC", "Accounting"),
         ("SOC", "Sociology"),
     ],
     "Languages": [
         ("FR", "French"),
         ("DE", "German"),
-        ("AR", "Arabic (First or Second Language)"),
+        ("AR", "Arabic"),
     ],
     "Creative & Technical": [
-        ("ICT", "Information & Communication Technology (ICT)"),
+        ("ICT", "ICT"),
         ("CS",  "Computer Science"),
     ],
     "Other options": [
         ("EM", "Environmental Management"),
-        ("PE", "Physical Education (PE)"),
+        ("PE", "Physical Education"),
         ("TT", "Travel & Tourism"),
     ],
     "Cambridge & Edexcel AS & A Level Subjects": [
-        ("MTH", "Mathematics"),
-        ("PHY", "Physics"),
-        ("CHE", "Chemistry"),
-        ("BIO", "Biology"),
-        ("BUS", "Business"),
-        ("ECO", "Economics"),
-        ("PSY", "Psychology"),
+        ("MTH_ALEVEL", "Math (AS/A Level)"),
+        ("PHY_ALEVEL", "Physics (AS/A Level)"),
+        ("CHE_ALEVEL", "Chemistry (AS/A Level)"),
+        ("BIO_ALEVEL", "Biology (AS/A Level)"),
+        ("BUS_ALEVEL", "Business (AS/A Level)"),
+        ("ECO_ALEVEL", "Economics (AS/A Level)"),
+        ("PSY_ALEVEL", "Psychology (AS/A Level)"),
         ("SOC", "Sociology"),
         ("ENLIT", "English Literature"),
     ],
 }
 
+# ✅ CODE_TO_SUBJECT
 CODE_TO_SUBJECT = {
-    "MTH": "Math",
+    "MTH_CORE": "Math (Core)",
+    "MTH_ALEVEL": "Math (AS/A Level)",
+    "PHY_CORE": "Physics (Core)",
+    "PHY_ALEVEL": "Physics (AS/A Level)",
+    "CHE_CORE": "Chemistry (Core)",
+    "CHE_ALEVEL": "Chemistry (AS/A Level)",
+    "BIO_CORE": "Biology (Core)",
+    "BIO_ALEVEL": "Biology (AS/A Level)",
     "ENL": "English SL",
     "ENLIT": "English FL",
-    "BIO": "Biology",
-    "CHE": "Chemistry",
-    "PHY": "Physics",
-    "HUM": "Humanities & Social Sciences",
-    "BUS": "Business",
-    "ECO": "Economics",
+    "BUS_CORE": "Business (Core)",
+    "BUS_ALEVEL": "Business (AS/A Level)",
+    "ECO_CORE": "Economics (Core)",
+    "ECO_ALEVEL": "Economics (AS/A Level)",
+    "PSY_ALEVEL": "Psychology (AS/A Level)",
     "ACC": "Accounting",
     "SOC": "Sociology",
     "FR": "French",
@@ -150,8 +185,10 @@ CODE_TO_SUBJECT = {
     "EM": "Environmental Management",
     "PE": "Physical Education",
     "TT": "Travel & Tourism",
-    "PSY": "Psychology",
 }
+
+
+
 
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
@@ -527,14 +564,14 @@ def _handle_webhook():
                 })
 
                 # 👇👇 هنا نسأل الـ mode & lessons AFTER subjects (لو مش متحددين قبل كده)
-                if not s.get("mode") or not s.get("lessons_per_week"):
-                    s["stage"] = "ask_mode_after_sel"
-                    tg("editMessageText", {
-                        "chat_id": chat_id, "message_id": msg_id,
-                        "text": "🎯 Lesson type?",
-                        "reply_markup": kb_mode()
-                    })
-                    return jsonify({"ok": True})
+                #if not s.get("mode") or not s.get("lessons_per_week"):
+                s["stage"] = "ask_mode_after_sel"
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": "🎯 Lesson type?",
+                    "reply_markup": kb_mode()
+                })
+                return jsonify({"ok": True})
 
                 # لو متحددين بالفعل، كمل الطبيعي (عرض Add more / Show tutors)
                 tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}})
