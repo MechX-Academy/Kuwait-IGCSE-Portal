@@ -6,7 +6,7 @@ import requests
 from urllib.parse import quote
 
 app = Flask(__name__)
-BUILD_TAG = "kuwait-igcse-portal-v2.1"
+BUILD_TAG = "kuwait-igcse-portal-v2.2"
 
 # ------------ Telegram basics ------------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -158,7 +158,6 @@ def canonical_subject(label: str) -> str | None:
     if not t:
         return None
 
-    # clean punctuation to spaces and compress spaces
     t_clean = re.sub(r"[^a-z0-9\s&]+", " ", t)
     t_clean = re.sub(r"\s+", " ", t_clean).strip()
 
@@ -166,11 +165,9 @@ def canonical_subject(label: str) -> str | None:
         pool = [canonical] + aliases
         pool_norm = [_norm(x) for x in pool]
 
-        # 1) exact equality
         if any(t_clean == p for p in pool_norm):
             return _nice_subject_name(canonical.lower())
 
-        # 2) word-boundary contains
         for alias in pool_norm:
             if re.search(rf"\b{re.escape(alias)}\b", t_clean):
                 return _nice_subject_name(canonical.lower())
@@ -186,7 +183,6 @@ def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
             return True
     return False
 
-# (Optional) precompute canonical sets for later use in captions/filters
 for t in TEACHERS:
     subj = t.get("subjects", []) or []
     t["_subjects_canon"] = set()
@@ -230,7 +226,6 @@ def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: i
     """Build WA link PER TEACHER card: filters subjects to those taught by this teacher."""
     contact = t.get("contact", {}) or {}
     wa = (contact.get("whatsapp") or contact.get("phone") or "").strip()
-    # normalize to wa.me/NNN
     if wa.startswith("https://wa.me/"):
         base = wa
     else:
@@ -238,9 +233,9 @@ def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: i
         base = f"https://wa.me/{num}" if num else f"https://wa.me/{PORTAL_WA_NUMBER}"
 
     teacher_subjs = set(t.get("_subjects_canon", set()) or [])
-    filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs]  # keep user order
+    filtered_subjects = [s for s in subjects if canonical_subject(s) in teacher_subjs]
     if not filtered_subjects:
-        filtered_subjects = subjects  # fallback
+        filtered_subjects = subjects
 
     msg = (
         f"Hello, this is {student_full_name}.\n"
@@ -333,7 +328,6 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
 
 # ------------ Selection of teachers (checkbox UI) ------------
 def kb_select_teachers(matches: List[Dict[str, Any]], selected_ids: Set[str]):
-    """Inline keyboard with checkboxes for teachers; SEND_WA at bottom."""
     rows = []
     def tick(tid): return "✅" if tid in selected_ids else "☐"
     for t in matches:
@@ -399,7 +393,7 @@ def _handle_webhook():
                 s["board_code"] = b
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
-                    "text": "<b>Step 2/3 – Grade</b>\nSelect your child's current grade:",
+                    "text": "<b>Step 2/3 – Grade</b>\nSelect your current grade:",
                     "parse_mode": "HTML", "reply_markup": kb_grade(b)
                 })
                 return jsonify({"ok": True})
@@ -436,7 +430,7 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Done selecting subjects -> store selection and ask to add more or show all
+            # Done selecting subjects
             if data.startswith("D|"):
                 _, b, g, enc = data.split("|", 3)
                 g = int(g)
@@ -470,7 +464,6 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Add more -> go back to Step 1
             if data == "ADD_MORE":
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
@@ -480,7 +473,7 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Show all tutors for all selections
+            # Show all tutors
             if data == "SHOW_ALL":
                 s = session(chat_id)
                 selections = s.get("selections", [])
@@ -488,30 +481,20 @@ def _handle_webhook():
                     tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No selections yet."})
                     return jsonify({"ok": True})
 
-                # Collect matches per selection, keep mapping to selection
-                per_teacher_map: Dict[str, Dict[str, Any]] = {}  # tid -> {id,name,parts:[{subjects,board,grade}]}
-                ordered_cards: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []  # [(teacher, sel), ...]
+                per_teacher_map: Dict[str, Dict[str, Any]] = {}
+                ordered_cards: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
 
                 for sel in selections:
                     board_name = BOARD_CODES.get(sel["board_code"], sel["board_code"])
                     matches = collect_best_matches(sel["subjects"], sel["grade"], board_name, k=4)
                     for t in matches:
                         tid = t.get("id") or t["name"]
-                        # Ensure unique cards per teacher overall
                         if not any((t2.get("id") or t2["name"]) == tid for (t2, _) in ordered_cards):
                             ordered_cards.append((t, sel))
-                        # build aggregation entry
-                        entry = per_teacher_map.setdefault(tid, {
-                            "id": tid, "name": t["name"], "parts": []
-                        })
-                        entry["parts"].append({
-                            "subjects": sel["subjects"],
-                            "board": board_name,
-                            "grade": sel["grade"]
-                        })
+                        entry = per_teacher_map.setdefault(tid, {"id": tid, "name": t["name"], "parts": []})
+                        entry["parts"].append({"subjects": sel["subjects"], "board": board_name, "grade": sel["grade"]})
 
-                # Send cards (photo+caption)
-                student_name = s.get("name") or "Parent"
+                student_name = s.get("name") or "Student"
                 for t, sel in ordered_cards:
                     caption = format_teacher_caption_html(
                         t, student_name,
@@ -525,7 +508,6 @@ def _handle_webhook():
                     else:
                         tg("sendMessage", {"chat_id": chat_id, "text": caption, "parse_mode": "HTML"})
 
-                # Prepare selection UI for teachers (checkboxes)
                 s["last_matches"] = [{"id": v["id"], "name": v["name"]} for v in per_teacher_map.values()]
                 s["per_teacher_map"] = per_teacher_map
                 s["selected_teachers"] = set()
@@ -538,15 +520,12 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Toggle teacher selection
             if data.startswith("SEL_TEACHER|"):
                 _, tid = data.split("|", 1)
                 s = session(chat_id)
                 sel_ids: Set[str] = s.setdefault("selected_teachers", set())
-                if tid in sel_ids:
-                    sel_ids.remove(tid)
-                else:
-                    sel_ids.add(tid)
+                if tid in sel_ids: sel_ids.remove(tid)
+                else: sel_ids.add(tid)
                 tg("editMessageReplyMarkup", {
                     "chat_id": chat_id,
                     "message_id": msg_id,
@@ -554,7 +533,6 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Send one WhatsApp link with all chosen tutors
             if data == "SEND_WA":
                 s = session(chat_id)
                 sel_ids: Set[str] = s.get("selected_teachers", set())
@@ -565,17 +543,14 @@ def _handle_webhook():
                 per_teacher_map = s.get("per_teacher_map", {})
                 chosen = [per_teacher_map[tid] for tid in sel_ids if tid in per_teacher_map]
 
-                msg_lines = [f"Hello, this is {s.get('name','Parent')}.\nI'm interested in the following:"]
-                # Build elegant per-teacher lines; merge multiple parts for same teacher
+                msg_lines = [f"Hello, this is {s.get('name','Student')}.\nI'm interested in the following:"]
                 for item in chosen:
                     name = item["name"]
-                    parts = item["parts"]  # list of {subjects,board,grade}
-                    # Collapse parts by (board,grade) and union subjects per that pair
+                    parts = item["parts"]
                     collapsed: Dict[Tuple[str,int], Set[str]] = {}
                     for p in parts:
                         key = (p["board"], p["grade"])
                         collapsed.setdefault(key, set()).update(p["subjects"])
-                    # Build text parts
                     sub_parts = []
                     for (board, grade), subjset in collapsed.items():
                         sub_parts.append(f"{', '.join(sorted(subjset))} - {board} Grade {grade}")
@@ -609,7 +584,7 @@ def _handle_webhook():
             SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (Student Full Name):",
+                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (student):",
             })
             return jsonify({"ok": True})
 
@@ -618,7 +593,7 @@ def _handle_webhook():
             s["stage"] = "flow"
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum does your child follow?",
+                "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum do you follow?",
                 "parse_mode": "HTML",
                 "reply_markup": kb_board()
             })
@@ -635,7 +610,6 @@ def _handle_webhook():
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
-        # return 200 so Telegram doesn't retry (avoids duplicates)
         return jsonify({"ok": True}), 200
 
 
