@@ -552,107 +552,128 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Done selecting subjects
-            if data.startswith("D|"):
-                _, b, g, enc = data.split("|", 3)
-                g = int(g)
-                sel_codes = [x for x in enc.split(".") if x]
-                if not sel_codes:
-                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+                # ---------------- Done selecting subjects ----------------
+                if data.startswith("D|"):
+                    _, b, g, enc = data.split("|", 3)
+                    g = int(g)
+                    sel_codes = [x for x in enc.split(".") if x]
+                    if not sel_codes:
+                        tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+                        return jsonify({"ok": True})
+                
+                    s = session(chat_id)
+                    selection = {
+                        "board_code": b,
+                        "grade": g,
+                        "subjects": [CODE_TO_SUBJECT[c] for c in sel_codes],
+                        "prefs": {}  # هنملأه لكل مادة
+                    }
+                    s.setdefault("selections", []).append(selection)
+                
+                    push_event("selection", {
+                        "user_id": user_id, "username": username,
+                        "board": BOARD_CODES.get(b,b), "grade": g,
+                        "subjects": selection["subjects"]
+                    })
+                
+                    # نبدأ فلو الأسئلة لكل مادة بالترتيب
+                    s["pref_flow"] = {
+                        "sel_idx": len(s["selections"]) - 1,
+                        "i": 0,  # المؤشر الحالي
+                        "subjects": selection["subjects"],
+                        "current_mode": None
+                    }
+                    cur_subj = s["pref_flow"]["subjects"][0]
+                    s["stage"] = "ask_mode_per_subject"
+                    tg("editMessageText", {
+                        "chat_id": chat_id, "message_id": msg_id,
+                        "text": f"🎯 Lesson type for <b>{h(cur_subj)}</b>?",
+                        "parse_mode": "HTML",
+                        "reply_markup": kb_mode()
+                    })
                     return jsonify({"ok": True})
-
-                s = session(chat_id)
-                selection = {
-                    "board_code": b,
-                    "grade": g,
-                    "subjects": [CODE_TO_SUBJECT[c] for c in sel_codes]
-                }
-                s.setdefault("selections", []).append(selection)
-
-                push_event("selection", {
-                    "user_id": user_id,
-                    "username": username,
-                    "board": BOARD_CODES.get(b,b),
-                    "grade": g,
-                    "subjects": selection["subjects"]
-                })
-
-                # 👇👇 هنا نسأل الـ mode & lessons AFTER subjects (لو مش متحددين قبل كده)
-                #if not s.get("mode") or not s.get("lessons_per_week"):
-                s["stage"] = "ask_mode_after_sel"
-                tg("editMessageText", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "text": "🎯 Lesson type?",
-                    "reply_markup": kb_mode()
-                })
-                return jsonify({"ok": True})
-
-                # لو متحددين بالفعل، كمل الطبيعي (عرض Add more / Show tutors)
-                tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}})
-                tg("editMessageText", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "text": (f"Saved ✅\n"
-                             f"Board: <b>{h(BOARD_CODES.get(b,b))}</b> | Grade: <b>{g}</b>\n"
-                             f"Subjects: <b>{h(', '.join(selection['subjects']))}</b>\n\n"
-                             f"Do you want to add subjects from another Board/Grade?"),
-                    "parse_mode": "HTML",
-                    "reply_markup": kb_with_restart({
-                        "inline_keyboard": [
-                            [{"text": "➕ Add more", "callback_data": "ADD_MORE"}],
-                            [{"text": "🚀 Show tutors", "callback_data": "SHOW_ALL"}]
-                        ]
+                
+                
+                # ---------------- MODE per subject ----------------
+                if data.startswith("MODE|"):
+                    _, mode = data.split("|", 1)
+                    s = session(chat_id)
+                    pf = s.get("pref_flow")
+                    if not pf:
+                        # لو مفيش فلو شغّال رجّع المستخدم للخيارات
+                        tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No subject is pending."})
+                        return jsonify({"ok": True})
+                
+                    pf["current_mode"] = mode
+                    cur_subj = pf["subjects"][pf["i"]]
+                    s["stage"] = "ask_lpw_per_subject"
+                    tg("editMessageText", {
+                        "chat_id": chat_id, "message_id": msg_id,
+                        "text": f"🗓️ Lessons/week for <b>{h(cur_subj)}</b>?",
+                        "parse_mode": "HTML",
+                        "reply_markup": kb_lpw()
                     })
-                })
-                return jsonify({"ok": True})
-
-            # Mode (only when asked after subjects)
-            if data.startswith("MODE|"):
-                _, mode = data.split("|", 1)
-                s = session(chat_id)
-                s["mode"] = mode
-                push_event("mode", {"user_id": user_id, "username": username, "mode": mode})
-                s["stage"] = "ask_lpw_after_sel"
-                tg("editMessageText", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "text": "🗓️ How many lessons per week?",
-                    "reply_markup": kb_lpw()
-                })
-                return jsonify({"ok": True})
-
-            # Lessons per week (only when asked after subjects)
-            if data.startswith("LPW|"):
-                _, n = data.split("|", 1)
-                s = session(chat_id)
-            
-                # accept only 1 or 2; default to 1 if invalid
-                try:
-                    n_int = int(n)
-                    if n_int not in (1, 2):
+                    return jsonify({"ok": True})
+                
+                
+                # ---------------- LPW per subject ----------------
+                if data.startswith("LPW|"):
+                    _, n = data.split("|", 1)
+                    s = session(chat_id)
+                    pf = s.get("pref_flow")
+                    if not pf:
+                        tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No subject is pending."})
+                        return jsonify({"ok": True})
+                
+                    try:
+                        n_int = int(n)
+                        if n_int not in (1, 2):
+                            n_int = 1
+                    except:
                         n_int = 1
-                except:
-                    n_int = 1
-            
-                s["lessons_per_week"] = n_int
-                push_event("lessons_per_week", {
-                    "user_id": user_id,
-                    "username": username,
-                    "lessons_per_week": s["lessons_per_week"]
-                })
-                s["stage"] = "flow"
-            
-                # بعد تحديد التفضيلات، نرجّع زرار Add more / Show tutors
-                tg("editMessageText", {
-                    "chat_id": chat_id, "message_id": msg_id,
-                    "text": ("Preferences saved ✅\n"
-                             "You can add more selections or show tutors."),
-                    "reply_markup": kb_with_restart({
-                        "inline_keyboard": [
-                            [{"text": "➕ Add more", "callback_data": "ADD_MORE"}],
-                            [{"text": "🚀 Show tutors", "callback_data": "SHOW_ALL"}]
-                        ]
+                
+                    sel = s["selections"][pf["sel_idx"]]
+                    cur_subj = pf["subjects"][pf["i"]]
+                    # خزّن التفضيلات للمادة الحالية
+                    sel.setdefault("prefs", {})[cur_subj] = {"mode": pf["current_mode"], "lpw": n_int}
+                    push_event("subject_pref", {
+                        "user_id": user_id, "username": username,
+                        "board": BOARD_CODES.get(sel["board_code"], sel["board_code"]),
+                        "grade": sel["grade"],
+                        "subject": cur_subj,
+                        "mode": pf["current_mode"],
+                        "lessons_per_week": n_int
                     })
-                })
-                return jsonify({"ok": True})
+                
+                    # انتقل للمادة التالية أو انهي الفلو
+                    pf["i"] += 1
+                    if pf["i"] < len(pf["subjects"]):
+                        next_subj = pf["subjects"][pf["i"]]
+                        pf["current_mode"] = None
+                        s["stage"] = "ask_mode_per_subject"
+                        tg("editMessageText", {
+                            "chat_id": chat_id, "message_id": msg_id,
+                            "text": f"🎯 Lesson type for <b>{h(next_subj)}</b>?",
+                            "parse_mode": "HTML",
+                            "reply_markup": kb_mode()
+                        })
+                        return jsonify({"ok": True})
+                    else:
+                        # خلّصنا كل المواد للسيليكشن ده
+                        s["pref_flow"] = None
+                        s["stage"] = "flow"
+                        tg("editMessageText", {
+                            "chat_id": chat_id, "message_id": msg_id,
+                            "text": ("Preferences saved ✅\n"
+                                     "You can add more selections or show tutors."),
+                            "reply_markup": kb_with_restart({
+                                "inline_keyboard": [
+                                    [{"text": "➕ Add more", "callback_data": "ADD_MORE"}],
+                                    [{"text": "🚀 Show tutors", "callback_data": "SHOW_ALL"}]
+                                ]
+                            })
+                        })
+                        return jsonify({"ok": True})
 
 
             # Add more -> back to Step 1
