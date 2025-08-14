@@ -6,7 +6,7 @@ import requests
 from urllib.parse import quote
 
 app = Flask(__name__)
-BUILD_TAG = "kuwait-igcse-portal-v2.3"
+BUILD_TAG = "kuwait-igcse-portal-v2.7"
 
 # ------------ Telegram basics ------------
 TELEGRAM_TOKEN = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -16,10 +16,6 @@ BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else
 
 # WhatsApp number for the final unified portal link
 PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
-
-# Inactivity timeout (seconds) before nudging with Restart
-INACTIVITY_SECS = int(os.getenv("INACTIVITY_SECS", "300"))  # default 5 minutes
-
 
 def tg(method: str, payload: Dict[str, Any]):
     """Safe Telegram call with light logging."""
@@ -155,8 +151,8 @@ def _nice_subject_name(key: str) -> str:
 def canonical_subject(label: str) -> str | None:
     """
     Normalize subject labels in a strict-but-robust way:
-    - accept exact matches OR word-boundary contains (e.g., 'IGCSE Mathematics' -> 'Math')
-    - avoid fuzzy mismatches by requiring whole-word match from our alias pool
+    - exact matches or word-boundary contains (e.g., 'IGCSE Mathematics' -> 'Math')
+    - no fuzzy matching beyond defined aliases
     """
     t = _norm(label)
     if not t:
@@ -194,34 +190,28 @@ for t in TEACHERS:
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
     """
-    STRICT matching: teacher must teach the SUBJECT, support the GRADE,
-    and cover the BOARD. No fallbacks.
+    STRICT matching: teacher must match SUBJECT + GRADE + BOARD.
+    No fallbacks.
     """
     results = []
     for t in TEACHERS:
-        # 1) subject must match (using canonical/aliases logic)
+        # Subject mandatory
         if subject and not teacher_has_subject(t.get("subjects", []), subject):
             continue
-
-        # 2) grade must be supported
+        # Grade mandatory
         if grade is not None:
             grades = t.get("grades") or []
             if grade not in grades:
                 continue
-
-        # 3) board must match (case-insensitive)
+        # Board mandatory
         if board:
             boards = t.get("boards") or []
             if not any(_norm(board) == _norm(b) for b in boards):
                 continue
-
         results.append(t)
-
-    # Organize the teachers by alphabetical names
+    # ترتيب أبجدي ثابت بالاسم
     results.sort(key=lambda tt: tt.get("name", "").lower())
-
     return results[:limit]
-
 
 def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
     seen, out = set(), []
@@ -237,7 +227,7 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
     return out
 
 def build_wa_link(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
-    """Build WA link PER TEACHER card: filters subjects to those taught by this teacher."""
+    """Build WA link PER TEACHER card: filter subjects to those taught by this teacher."""
     contact = t.get("contact", {}) or {}
     wa = (contact.get("whatsapp") or contact.get("phone") or "").strip()
     if wa.startswith("https://wa.me/"):
@@ -274,19 +264,13 @@ def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board:
     lines.append(f'  <a href="{h(wa_link)}">WhatsApp</a>')
     return "\n".join(lines)
 
-# ------------ Restart helpers ------------
-def send_restart_prompt(chat_id: int):
-    """Send a nudge with a Restart button."""
-    tg("sendMessage", {
-        "chat_id": chat_id,
-        "text": "It’s been a while. Press <b>Restart</b> to begin again.",
-        "parse_mode": "HTML",
-        "reply_markup": {
-            "inline_keyboard": [
-                [{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}]
-            ]
-        }
-    })
+# Append a Restart button to any inline keyboard
+def kb_with_restart(markup: Dict[str, Any] | None) -> Dict[str, Any]:
+    if not markup:
+        markup = {"inline_keyboard": []}
+    rows = markup.get("inline_keyboard", [])
+    rows.append([{"text": "⟲ Restart / ابدأ من جديد", "callback_data": "FORCE_RESTART"}])
+    return {"inline_keyboard": rows}
 
 
 # ------------ Inline keyboards (board/grade/subjects) ------------
@@ -300,7 +284,7 @@ def kb_board():
     return {"inline_keyboard": [[
         {"text": "Cambridge", "callback_data": "B|C"},
         {"text": "Edexcel",   "callback_data": "B|E"},
-        {"text": "Oxford",    "callback_data": "B|O"},
+        {"text": "OxfordAQA", "callback_data": "B|O"},
     ]]}
 
 def kb_grade(board_code: str):
@@ -310,7 +294,7 @@ def kb_grade(board_code: str):
         if len(row) == 4:
             rows.append(row); row = []
     if row: rows.append(row)
-    rows.append([{"text": "⬅️ Back", "callback_data": "B|"+board_code}])
+    rows.append([{"text": "⬅️ رجوع", "callback_data": "B|"+board_code}])
     return {"inline_keyboard": rows}
 
 def kb_subjects(board_code: str, grade: int, sel: Set[str]):
@@ -330,16 +314,16 @@ def kb_subjects(board_code: str, grade: int, sel: Set[str]):
         {"text": "Done ✅", "callback_data": f"D|{board_code}|{grade}|{encode_sel(sel)}"},
         {"text": "Reset ↩️", "callback_data": f"T|__RESET__|{board_code}|{grade}|{encode_sel(sel)}"},
     ])
-    rows.append([{"text": "⬅️ Back", "callback_data": f"G|{grade}|{board_code}"}])
+    rows.append([{"text": "⬅️ رجوع", "callback_data": f"G|{grade}|{board_code}"}])
     return {"inline_keyboard": rows}
 
 def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
     board = BOARD_CODES.get(board_code, board_code)
     chosen = ", ".join(h(CODE_TO_SUBJECT[c]) for c in sorted(sel)) if sel else "—"
-    return (f"<b>Step 3/3 – Subjects</b>\n"
-            f"Board: <b>{h(board)}</b>   |   Grade: <b>{grade}</b>\n"
-            f"Pick one or more subjects, then press <b>Done</b>.\n"
-            f"Selected: {chosen}")
+    return (f"<b>الخطوة 3/3 – المواد</b>\n"
+            f"المجلس: <b>{h(board)}</b>   |   الصف: <b>{grade}</b>\n"
+            f"اختر مادة أو أكثر ثم اضغط <b>Done</b>.\n"
+            f"المختار: {chosen}")
 
 
 # ------------ Selection of teachers (checkbox UI) ------------
@@ -352,7 +336,7 @@ def kb_select_teachers(matches: List[Dict[str, Any]], selected_ids: Set[str]):
             "callback_data": f"SEL_TEACHER|{t['id']}"
         }])
     if not rows:
-        rows.append([{"text": "No matches found", "callback_data": "noop"}])
+        rows.append([{"text": "لا توجد نتائج مطابقة", "callback_data": "noop"}])
     rows.append([{"text": "📩 إرسال رابط واتساب", "callback_data": "SEND_WA"}])
     rows.append([{"text": "➕ أضف مواد أخرى", "callback_data": "ADD_MORE"}])
     return {"inline_keyboard": rows}
@@ -399,30 +383,16 @@ def _handle_webhook():
             data = cq.get("data", "")
             tg("answerCallbackQuery", {"callback_query_id": cq["id"]})
 
-            # inactivity check on any callback
-            s = session(chat_id)
-            now = time.time()
-            last = s.get("last_seen", 0)
-            if (now - last) >= INACTIVITY_SECS and s.get("stage") != "ask_name" and not s.get("idle_prompt_sent"):
-                send_restart_prompt(chat_id)
-                s["idle_prompt_sent"] = True
-            s["last_seen"] = now
-
             if data == "noop":
                 return jsonify({"ok": True})
 
             # Force restart
             if data == "FORCE_RESTART":
-                SESSIONS[chat_id] = {
-                    "stage": "ask_name",
-                    "name": "",
-                    "selections": [],
-                    "last_seen": time.time(),
-                    "idle_prompt_sent": False
-                }
+                SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
                 tg("sendMessage", {
                     "chat_id": chat_id,
-                    "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (student):",
+                    "text": "👋 أهلاً بك في Kuwait IGCSE Portal\nمن فضلك اكتب اسمك الكامل (الطالب):",
+                    "reply_markup": kb_with_restart({"inline_keyboard": []})
                 })
                 return jsonify({"ok": True})
 
@@ -433,8 +403,8 @@ def _handle_webhook():
                 s["board_code"] = b
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
-                    "text": "<b>Step 2/3 – Grade</b>\nSelect your current grade:",
-                    "parse_mode": "HTML", "reply_markup": kb_grade(b)
+                    "text": "🔢 <b>الخطوة 2/3 – الصف</b>\nاختر صفك الدراسي الحالي:",
+                    "parse_mode": "HTML", "reply_markup": kb_with_restart(kb_grade(b))
                 })
                 return jsonify({"ok": True})
 
@@ -449,7 +419,7 @@ def _handle_webhook():
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": summary_text(b, g, sel),
-                    "parse_mode": "HTML", "reply_markup": kb_subjects(b, g, sel)
+                    "parse_mode": "HTML", "reply_markup": kb_with_restart(kb_subjects(b, g, sel))
                 })
                 return jsonify({"ok": True})
 
@@ -466,7 +436,7 @@ def _handle_webhook():
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": summary_text(b, g, sel),
-                    "parse_mode": "HTML", "reply_markup": kb_subjects(b, g, sel)
+                    "parse_mode": "HTML", "reply_markup": kb_with_restart(kb_subjects(b, g, sel))
                 })
                 return jsonify({"ok": True})
 
@@ -476,7 +446,7 @@ def _handle_webhook():
                 g = int(g)
                 sel_codes = [x for x in enc.split(".") if x]
                 if not sel_codes:
-                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "اختر مادة واحدة على الأقل."})
                     return jsonify({"ok": True})
 
                 s = session(chat_id)
@@ -490,26 +460,27 @@ def _handle_webhook():
                 tg("editMessageReplyMarkup", {"chat_id": chat_id, "message_id": msg_id, "reply_markup": {"inline_keyboard": []}})
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
-                    "text": (f"Saved ✅\n"
-                             f"Board: <b>{h(BOARD_CODES.get(b,b))}</b> | Grade: <b>{g}</b>\n"
-                             f"Subjects: <b>{h(', '.join(selection['subjects']))}</b>\n\n"
-                             f"Do you want to add subjects from another Board/Grade?"),
+                    "text": (f"تم الحفظ ✅\n"
+                             f"المجلس: <b>{h(BOARD_CODES.get(b,b))}</b> | الصف: <b>{g}</b>\n"
+                             f"المواد: <b>{h(', '.join(selection['subjects']))}</b>\n\n"
+                             f"هل تريد إضافة مواد من مجلس/صف آخر؟"),
                     "parse_mode": "HTML",
-                    "reply_markup": {
+                    "reply_markup": kb_with_restart({
                         "inline_keyboard": [
-                            [{"text": "➕ Add more", "callback_data": "ADD_MORE"}],
-                            [{"text": "🚀 Show tutors", "callback_data": "SHOW_ALL"}]
+                            [{"text": "➕ إضافة مواد أخرى", "callback_data": "ADD_MORE"}],
+                            [{"text": "🚀 عرض المدرسين", "callback_data": "SHOW_ALL"}]
                         ]
-                    }
+                    })
                 })
                 return jsonify({"ok": True})
 
+            # Add more -> back to Step 1
             if data == "ADD_MORE":
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
-                    "text": "<b>Step 1/3 – Board</b>\nChoose the board for the new selection:",
+                    "text": "🧭 <b>الخطوة 1/3 – المجلس</b>\nاختر المجلس الدراسي:",
                     "parse_mode": "HTML",
-                    "reply_markup": kb_board()
+                    "reply_markup": kb_with_restart(kb_board())
                 })
                 return jsonify({"ok": True})
 
@@ -518,7 +489,7 @@ def _handle_webhook():
                 s = session(chat_id)
                 selections = s.get("selections", [])
                 if not selections:
-                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No selections yet."})
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "لا توجد اختيارات بعد."})
                     return jsonify({"ok": True})
 
                 per_teacher_map: Dict[str, Dict[str, Any]] = {}
@@ -554,38 +525,33 @@ def _handle_webhook():
 
                 tg("sendMessage", {
                     "chat_id": chat_id,
-                    "text": "Select the tutors you're interested in, then press <b>Send WhatsApp Link</b>.\nNeed to start over? Press <b>Restart</b> below.",
+                    "text": "اختر المدرسين المطلوبين ثم اضغط <b>📩 إرسال رابط واتساب</b>.",
                     "parse_mode": "HTML",
-                    "reply_markup": {
-                        "inline_keyboard": [
-                            *kb_select_teachers(s["last_matches"], s["selected_teachers"])["inline_keyboard"],
-                            [{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}]
-                        ]
-                    }
+                    "reply_markup": kb_with_restart(kb_select_teachers(s["last_matches"], s["selected_teachers"]))
                 })
                 return jsonify({"ok": True})
 
+            # Toggle teacher selection
             if data.startswith("SEL_TEACHER|"):
                 _, tid = data.split("|", 1)
                 s = session(chat_id)
                 sel_ids: Set[str] = s.setdefault("selected_teachers", set())
                 if tid in sel_ids: sel_ids.remove(tid)
                 else: sel_ids.add(tid)
-                # keep the Restart button visible under the list
-                rows = kb_select_teachers(s.get("last_matches", []), sel_ids)["inline_keyboard"]
-                rows.append([{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}])
+                rows = kb_select_teachers(s.get("last_matches", []), sel_ids)
                 tg("editMessageReplyMarkup", {
                     "chat_id": chat_id,
                     "message_id": msg_id,
-                    "reply_markup": {"inline_keyboard": rows}
+                    "reply_markup": kb_with_restart(rows)
                 })
                 return jsonify({"ok": True})
 
+            # Send one WhatsApp link with all chosen tutors
             if data == "SEND_WA":
                 s = session(chat_id)
                 sel_ids: Set[str] = s.get("selected_teachers", set())
                 if not sel_ids:
-                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Pick at least one tutor."})
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "اختر مدرس واحد على الأقل."})
                     return jsonify({"ok": True})
 
                 per_teacher_map = s.get("per_teacher_map", {})
@@ -610,9 +576,10 @@ def _handle_webhook():
 
                 tg("sendMessage", {
                     "chat_id": chat_id,
-                    "text": f"<a href=\"{wa_link}\">📩 Open WhatsApp</a>",
+                    "text": f"<a href=\"{wa_link}\">📩 فتح واتساب</a>",
                     "parse_mode": "HTML",
-                    "disable_web_page_preview": True
+                    "disable_web_page_preview": True,
+                    "reply_markup": kb_with_restart({"inline_keyboard": []})
                 })
                 return jsonify({"ok": True})
 
@@ -627,51 +594,32 @@ def _handle_webhook():
         text = (msg.get("text") or "").strip()
         s = session(chat_id)
 
-        # inactivity check on any message
-        now = time.time()
-        last = s.get("last_seen", 0)
-        if (now - last) >= INACTIVITY_SECS and s.get("stage") != "ask_name" and not s.get("idle_prompt_sent"):
-            send_restart_prompt(chat_id)
-            s["idle_prompt_sent"] = True
-        s["last_seen"] = now
-
         if text.lower() in ("/start", "start"):
             # reset session & ask for student full name
-            SESSIONS[chat_id] = {
-                "stage": "ask_name",
-                "name": "",
-                "selections": [],
-                "last_seen": time.time(),
-                "idle_prompt_sent": False
-            }
+            SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (student):",
+                "text": "👋 أهلاً بك في Kuwait IGCSE Portal\nمن فضلك اكتب اسمك الكامل (الطالب):",
+                "reply_markup": kb_with_restart({"inline_keyboard": []})
             })
             return jsonify({"ok": True})
 
         if s.get("stage") == "ask_name" and text:
             s["name"] = text
             s["stage"] = "flow"
-            s["idle_prompt_sent"] = False  # clear any prior nudge
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "<b>Step 1/3 – Board</b>\nWhich board or curriculum do you follow?",
+                "text": "🧭 <b>الخطوة 1/3 – المجلس</b>\nاختر المجلس الدراسي:",
                 "parse_mode": "HTML",
-                "reply_markup": kb_board()
+                "reply_markup": kb_with_restart(kb_board())
             })
             return jsonify({"ok": True})
 
         # Fallback: point user to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
-            "text": "Please use the guided flow 👇",
-            "reply_markup": {
-                "inline_keyboard": [
-                    [{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}],
-                    *kb_board()["inline_keyboard"]
-                ]
-            }
+            "text": "استخدم الاختيارات التالية للمتابعة 👇",
+            "reply_markup": kb_with_restart(kb_board())
         })
         return jsonify({"ok": True})
 
