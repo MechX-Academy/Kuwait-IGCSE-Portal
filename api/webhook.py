@@ -110,6 +110,7 @@ VALID_SUBJECTS = {
     "spanish": ["spanish"],
     "sociology": ["sociology"],
     "humanities & social sciences": ["humanities", "social sciences"],
+    "combined science": ["combined science", "double award science", "coordinated science"],
     "environmental management": ["environmental management", "em"],
     "physical education": ["pe", "physical education"],
     "travel & tourism": ["travel & tourism", "travel", "tourism"],
@@ -143,6 +144,7 @@ SUBJECT_GROUPS = {
     "Other options": [
         ("EM", "Environmental Management"),
         ("PE", "Physical Education"),
+        ("COMSCI", "Combined Science"),
         ("TT", "Travel & Tourism"),
     ],
     "Cambridge & Edexcel AS & A Level Subjects": [
@@ -182,6 +184,7 @@ CODE_TO_SUBJECT = {
     "AR": "Arabic",
     "ICT": "ICT",
     "CS": "Computer Science",
+    "COMSCI": "Combined Science",
     "EM": "Environmental Management",
     "PE": "Physical Education",
     "TT": "Travel & Tourism",
