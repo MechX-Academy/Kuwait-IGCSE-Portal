@@ -262,7 +262,7 @@ def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_tex
         "text": prefill_text
     }
     token = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
-    base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal-nu.vercel.app").rstrip("/")
+    base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal.vercel.app").rstrip("/")
     return f"{base}/api/wa?t={token}"
 
 # ------------ Rendering ------------
