@@ -217,7 +217,7 @@ def canonical_subject(label: str) -> str | None:
     t = _norm(label)
     if not t:
         return None
-    t_clean = re.sub(r"[^a-z0-9\s&]+", " ", t)
+    t_clean = re.sub(r"[^a-z0-9\s&()/-]+", " ", t)
     t_clean = re.sub(r"\s+", " ", t_clean).strip()
     for canonical, aliases in VALID_SUBJECTS.items():
         pool = [canonical] + aliases
@@ -227,6 +227,7 @@ def canonical_subject(label: str) -> str | None:
         for alias in pool_norm:
             if re.search(rf"\b{re.escape(alias)}\b", t_clean):
                 return _nice_subject_name(canonical.lower())
+    print("[WARN] canonical_subject: no match for", label)  # debug
     return None
 
 def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
@@ -260,25 +261,35 @@ for t in TEACHERS:
     t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
-    """
-    STRICT matching: teacher must match SUBJECT + GRADE + BOARD. No fallbacks.
-    """
     board_can = canonical_board(board) if board else ""
     results = []
+    debug_why = []  # debug holder
     for t in TEACHERS:
+        why = {"teacher": t.get("name"), "ok": True, "reasons": []}
+
         if subject and not teacher_has_subject(t.get("subjects", []), subject):
-            continue
+            why["ok"] = False
+            why["reasons"].append(f"subject_mismatch: wanted={subject}, teacher_subjects={t.get('subjects')}")
         if grade is not None:
             grades = t.get("grades") or []
             if grade not in grades:
-                continue
+                why["ok"] = False
+                why["reasons"].append(f"grade_mismatch: wanted={grade}, teacher_grades={grades}")
         if board_can:
             if board_can not in (t.get("_boards_canon") or []):
-                continue
-        results.append(t)
-    # stable alphabetical order
+                why["ok"] = False
+                why["reasons"].append(f"board_mismatch: wanted_can={board_can}, teacher_can={t.get('_boards_canon')}")
+
+        if why["ok"]:
+            results.append(t)
+        else:
+            debug_why.append(why)
+
+    if not results:
+        print("[DEBUG NO MATCH]", json.dumps(debug_why[:5], ensure_ascii=False))
     results.sort(key=lambda tt: tt.get("name", "").lower())
     return results[:limit]
+
 
 def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
     seen, out = set(), []
