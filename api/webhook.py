@@ -15,7 +15,6 @@ if not TELEGRAM_TOKEN:
 BOT_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}" if TELEGRAM_TOKEN else None
 
 def tg(method: str, payload: Dict[str, Any]):
-    """Safe Telegram call with light logging."""
     if not BOT_API:
         print(f"[TG] skip {method} (no token)")
         return None
@@ -40,10 +39,9 @@ PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "https://kuwait-igcse-portal-nu.
 
 # Google Sheets Analytics
 GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()  # https://script.google.com/.../exec
-GS_SECRET  = os.getenv("GS_SECRET", "").strip()   # نفس SECRET في Apps Script
+GS_SECRET  = os.getenv("GS_SECRET", "").strip()
 
 def push_event(event_type: str, payload: Dict[str, Any]):
-    """Fire-and-forget analytics (silent)."""
     if not GS_WEBHOOK or not GS_SECRET:
         return
     rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
@@ -63,9 +61,7 @@ except Exception as e:
     TEACHERS = []
 
 # ------------ Subject dictionaries ------------
-# ✅ VALID_SUBJECTS بعد الفصل بين Core و AS/A Level للمواد المتشابهة
 VALID_SUBJECTS = {
-    # Math
     "math (core)": [
         "math (core)", "mathematics (core)", "maths (core)",
         "additional math (core)", "further math (core)", "igcse mathematics (core)"
@@ -74,33 +70,19 @@ VALID_SUBJECTS = {
         "math (as/a level)", "mathematics (as/a level)", "maths (as/a level)",
         "additional math (as/a level)", "further math (as/a level)", "igcse mathematics (as/a level)"
     ],
-
-    # Physics
     "physics (core)": ["physics (core)", "phys (core)"],
     "physics (as/a level)": ["physics (as/a level)", "phys (as/a level)"],
-
-    # Chemistry
     "chemistry (core)": ["chemistry (core)", "chem (core)"],
     "chemistry (as/a level)": ["chemistry (as/a level)", "chem (as/a level)"],
-
-    # Biology
     "biology (core)": ["biology (core)", "bio (core)"],
     "biology (as/a level)": ["biology (as/a level)", "bio (as/a level)"],
-
-    # English
     "english language": ["english", "english language", "esl", "first language english", "second language english", "english sl"],
     "english literature": ["english literature", "literature", "english fl"],
-
-    # Business & Economics
     "business (core)": ["business (core)", "business studies (core)"],
     "business (as/a level)": ["business (as/a level)", "business studies (as/a level)"],
     "economics (core)": ["economics (core)", "econ (core)"],
     "economics (as/a level)": ["economics (as/a level)", "econ (as/a level)"],
-
-    # Psychology
     "psychology (as/a level)": ["psychology (as/a level)", "psy (as/a level)"],
-
-    # باقي المواد اللي ملهاش Core/A Level
     "accounting": ["accounting", "accounts"],
     "geography": ["geography", "geo"],
     "history": ["history"],
@@ -118,7 +100,6 @@ VALID_SUBJECTS = {
     "ict": ["ict", "information and communication technology"],
 }
 
-# ✅ SUBJECT_GROUPS
 SUBJECT_GROUPS = {
     "Core subjects": [
         ("MTH_CORE", "Math (Core)"),
@@ -160,7 +141,6 @@ SUBJECT_GROUPS = {
     ],
 }
 
-# ✅ CODE_TO_SUBJECT
 CODE_TO_SUBJECT = {
     "MTH_CORE": "Math (Core)",
     "MTH_ALEVEL": "Math (AS/A Level)",
@@ -190,9 +170,6 @@ CODE_TO_SUBJECT = {
     "TT": "Travel & Tourism",
 }
 
-
-
-
 BOARD_CODES = {"C": "Cambridge", "E": "Edexcel", "O": "OxfordAQA"}
 
 # ------------ Helpers ------------
@@ -217,6 +194,7 @@ def canonical_subject(label: str) -> str | None:
     t = _norm(label)
     if not t:
         return None
+    # السماح بالأقواس والداش والسلاش
     t_clean = re.sub(r"[^a-z0-9\s&()/-]+", " ", t)
     t_clean = re.sub(r"\s+", " ", t_clean).strip()
     for canonical, aliases in VALID_SUBJECTS.items():
@@ -227,7 +205,7 @@ def canonical_subject(label: str) -> str | None:
         for alias in pool_norm:
             if re.search(rf"\b{re.escape(alias)}\b", t_clean):
                 return _nice_subject_name(canonical.lower())
-    print("[WARN] canonical_subject: no match for", label)  # debug
+    print("[WARN] canonical_subject: no match for", label)
     return None
 
 def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
@@ -263,33 +241,26 @@ for t in TEACHERS:
 def match_teachers(subject=None, grade=None, board=None, limit=4):
     board_can = canonical_board(board) if board else ""
     results = []
-    debug_why = []  # debug holder
+    debug_why = []
     for t in TEACHERS:
         why = {"teacher": t.get("name"), "ok": True, "reasons": []}
-
         if subject and not teacher_has_subject(t.get("subjects", []), subject):
-            why["ok"] = False
-            why["reasons"].append(f"subject_mismatch: wanted={subject}, teacher_subjects={t.get('subjects')}")
+            why["ok"] = False; why["reasons"].append(f"subject_mismatch: wanted={subject}, teacher_subjects={t.get('subjects')}")
         if grade is not None:
             grades = t.get("grades") or []
             if grade not in grades:
-                why["ok"] = False
-                why["reasons"].append(f"grade_mismatch: wanted={grade}, teacher_grades={grades}")
+                why["ok"] = False; why["reasons"].append(f"grade_mismatch: wanted={grade}, teacher_grades={grades}")
         if board_can:
             if board_can not in (t.get("_boards_canon") or []):
-                why["ok"] = False
-                why["reasons"].append(f"board_mismatch: wanted_can={board_can}, teacher_can={t.get('_boards_canon')}")
-
+                why["ok"] = False; why["reasons"].append(f"board_mismatch: wanted_can={board_can}, teacher_can={t.get('_boards_canon')}")
         if why["ok"]:
             results.append(t)
         else:
             debug_why.append(why)
-
     if not results:
         print("[DEBUG NO MATCH]", json.dumps(debug_why[:5], ensure_ascii=False))
     results.sort(key=lambda tt: tt.get("name", "").lower())
     return results[:limit]
-
 
 def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4) -> List[Dict[str, Any]]:
     seen, out = set(), []
@@ -333,7 +304,6 @@ def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board:
     if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
     return "\n".join(lines)
 
-# Append a Restart button to any inline keyboard
 def kb_with_restart(markup: Dict[str, Any] | None) -> Dict[str, Any]:
     if not markup:
         markup = {"inline_keyboard": []}
@@ -341,7 +311,7 @@ def kb_with_restart(markup: Dict[str, Any] | None) -> Dict[str, Any]:
     rows.append([{"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}])
     return {"inline_keyboard": rows}
 
-# ------------ Inline keyboards (board/grade/subjects) ------------
+# ------------ Inline keyboards ------------
 def encode_sel(sel: Set[str]) -> str:
     return ".".join(sorted(sel)) if sel else ""
 
@@ -393,7 +363,7 @@ def summary_text(board_code: str, grade: int, sel: Set[str]) -> str:
             f"Pick one or more subjects, then press <b>Done</b>.\n"
             f"Selected: {chosen}")
 
-# ------------ Extra keyboards: mode & lessons/week (تُسأل بعد الـ subjects) ------------
+# Extra keyboards (بعد الـ subjects)
 def kb_mode():
     return {"inline_keyboard": [[
         {"text": "👤 One‑to‑One", "callback_data": "MODE|1:1"},
@@ -411,7 +381,6 @@ def kb_lpw():
             {"text": "⟲ Restart", "callback_data": "FORCE_RESTART"}
         ]]
     }
-
 
 # ------------ Selection of teachers (checkbox UI) ------------
 def kb_select_teachers(matches: List[Dict[str, Any]], selected_ids: Set[str]):
@@ -438,8 +407,8 @@ def session(chat_id: int) -> Dict[str, Any]:
             "stage": "idle",
             "name": "",
             "selections": [],
-            "mode": None,              # "1:1" or "group"
-            "lessons_per_week": None,  # int
+            "mode": None,
+            "lessons_per_week": None,
         }
     return SESSIONS[chat_id]
 
@@ -465,7 +434,6 @@ def _handle_webhook():
         update = request.get_json(force=True, silent=True) or {}
         print("[UPDATE]", json.dumps(update)[:1200])
 
-        # ---------- Callback queries ----------
         if "callback_query" in update:
             cq = update["callback_query"]
             chat_id = cq["message"]["chat"]["id"]
@@ -480,7 +448,7 @@ def _handle_webhook():
             if data == "noop":
                 return jsonify({"ok": True})
 
-            # Force restart
+            # Restart
             if data == "FORCE_RESTART":
                 SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": [], "mode": None, "lessons_per_week": None}
                 tg("sendMessage", {
@@ -491,7 +459,7 @@ def _handle_webhook():
                 push_event("restart", {"user_id": user_id, "username": username})
                 return jsonify({"ok": True})
 
-            # Board chosen
+            # Board
             if data.startswith("B|"):
                 b = data.split("|", 1)[1]
                 s = session(chat_id)
@@ -517,7 +485,7 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Grade chosen
+            # Grade
             if data.startswith("G|"):
                 _, g, b = data.split("|", 2)
                 g = int(g)
@@ -526,8 +494,6 @@ def _handle_webhook():
                 s["grade"] = g
                 sel = set()
                 push_event("grade", {"user_id": user_id, "username": username, "board": BOARD_CODES.get(b,b), "grade": g})
-
-                # نضمن إن فيه كيبورد subjects فورًا بعد الجريد
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
                     "text": summary_text(b, g, sel),
@@ -552,131 +518,125 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-                # ---------------- Done selecting subjects ----------------
-                if data.startswith("D|"):
-                    _, b, g, enc = data.split("|", 3)
-                    g = int(g)
-                    sel_codes = [x for x in enc.split(".") if x]
-                    if not sel_codes:
-                        tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
-                        return jsonify({"ok": True})
-                
-                    s = session(chat_id)
-                    selection = {
-                        "board_code": b,
-                        "grade": g,
-                        "subjects": [CODE_TO_SUBJECT[c] for c in sel_codes],
-                        "prefs": {}  # هنملأه لكل مادة
-                    }
-                    s.setdefault("selections", []).append(selection)
-                
-                    push_event("selection", {
-                        "user_id": user_id, "username": username,
-                        "board": BOARD_CODES.get(b,b), "grade": g,
-                        "subjects": selection["subjects"]
-                    })
-                
-                    # نبدأ فلو الأسئلة لكل مادة بالترتيب
-                    s["pref_flow"] = {
-                        "sel_idx": len(s["selections"]) - 1,
-                        "i": 0,  # المؤشر الحالي
-                        "subjects": selection["subjects"],
-                        "current_mode": None
-                    }
-                    cur_subj = s["pref_flow"]["subjects"][0]
+            # ---------------- Done selecting subjects ----------------
+            if data.startswith("D|"):
+                _, b, g, enc = data.split("|", 3)
+                g = int(g)
+                sel_codes = [x for x in enc.split(".") if x]
+                if not sel_codes:
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Please select at least one subject."})
+                    return jsonify({"ok": True})
+
+                s = session(chat_id)
+                selection = {
+                    "board_code": b,
+                    "grade": g,
+                    "subjects": [CODE_TO_SUBJECT[c] for c in sel_codes],
+                    "prefs": {}
+                }
+                s.setdefault("selections", []).append(selection)
+
+                push_event("selection", {
+                    "user_id": user_id, "username": username,
+                    "board": BOARD_CODES.get(b,b), "grade": g,
+                    "subjects": selection["subjects"]
+                })
+
+                # ابدأ فلو التفضيلات لكل مادة
+                s["pref_flow"] = {
+                    "sel_idx": len(s["selections"]) - 1,
+                    "i": 0,
+                    "subjects": selection["subjects"],
+                    "current_mode": None
+                }
+                cur_subj = s["pref_flow"]["subjects"][0]
+                s["stage"] = "ask_mode_per_subject"
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": f"🎯 Lesson type for <b>{h(cur_subj)}</b>?",
+                    "parse_mode": "HTML",
+                    "reply_markup": kb_mode()
+                })
+                return jsonify({"ok": True})
+
+            # ---------------- MODE per subject ----------------
+            if data.startswith("MODE|"):
+                _, mode = data.split("|", 1)
+                s = session(chat_id)
+                pf = s.get("pref_flow")
+                if not pf:
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No subject is pending."})
+                    return jsonify({"ok": True})
+
+                pf["current_mode"] = mode
+                cur_subj = pf["subjects"][pf["i"]]
+                s["stage"] = "ask_lpw_per_subject"
+                tg("editMessageText", {
+                    "chat_id": chat_id, "message_id": msg_id,
+                    "text": f"🗓️ Lessons/week for <b>{h(cur_subj)}</b>?",
+                    "parse_mode": "HTML",
+                    "reply_markup": kb_lpw()
+                })
+                return jsonify({"ok": True})
+
+            # ---------------- LPW per subject ----------------
+            if data.startswith("LPW|"):
+                _, n = data.split("|", 1)
+                s = session(chat_id)
+                pf = s.get("pref_flow")
+                if not pf:
+                    tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No subject is pending."})
+                    return jsonify({"ok": True})
+
+                try:
+                    n_int = int(n)
+                    if n_int not in (1, 2):
+                        n_int = 1
+                except:
+                    n_int = 1
+
+                sel = s["selections"][pf["sel_idx"]]
+                cur_subj = pf["subjects"][pf["i"]]
+                sel.setdefault("prefs", {})[cur_subj] = {"mode": pf["current_mode"], "lpw": n_int}
+                push_event("subject_pref", {
+                    "user_id": user_id, "username": username,
+                    "board": BOARD_CODES.get(sel["board_code"], sel["board_code"]),
+                    "grade": sel["grade"],
+                    "subject": cur_subj,
+                    "mode": pf["current_mode"],
+                    "lessons_per_week": n_int
+                })
+
+                # التالي أو إنهاء
+                pf["i"] += 1
+                if pf["i"] < len(pf["subjects"]):
+                    next_subj = pf["subjects"][pf["i"]]
+                    pf["current_mode"] = None
                     s["stage"] = "ask_mode_per_subject"
                     tg("editMessageText", {
                         "chat_id": chat_id, "message_id": msg_id,
-                        "text": f"🎯 Lesson type for <b>{h(cur_subj)}</b>?",
+                        "text": f"🎯 Lesson type for <b>{h(next_subj)}</b>?",
                         "parse_mode": "HTML",
                         "reply_markup": kb_mode()
                     })
                     return jsonify({"ok": True})
-                
-                
-                # ---------------- MODE per subject ----------------
-                if data.startswith("MODE|"):
-                    _, mode = data.split("|", 1)
-                    s = session(chat_id)
-                    pf = s.get("pref_flow")
-                    if not pf:
-                        # لو مفيش فلو شغّال رجّع المستخدم للخيارات
-                        tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No subject is pending."})
-                        return jsonify({"ok": True})
-                
-                    pf["current_mode"] = mode
-                    cur_subj = pf["subjects"][pf["i"]]
-                    s["stage"] = "ask_lpw_per_subject"
+                else:
+                    s["pref_flow"] = None
+                    s["stage"] = "flow"
                     tg("editMessageText", {
                         "chat_id": chat_id, "message_id": msg_id,
-                        "text": f"🗓️ Lessons/week for <b>{h(cur_subj)}</b>?",
-                        "parse_mode": "HTML",
-                        "reply_markup": kb_lpw()
+                        "text": ("Preferences saved ✅\n"
+                                 "You can add more selections or show tutors."),
+                        "reply_markup": kb_with_restart({
+                            "inline_keyboard": [
+                                [{"text": "➕ Add more", "callback_data": "ADD_MORE"}],
+                                [{"text": "🚀 Show tutors", "callback_data": "SHOW_ALL"}]
+                            ]
+                        })
                     })
                     return jsonify({"ok": True})
-                
-                
-                # ---------------- LPW per subject ----------------
-                if data.startswith("LPW|"):
-                    _, n = data.split("|", 1)
-                    s = session(chat_id)
-                    pf = s.get("pref_flow")
-                    if not pf:
-                        tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "No subject is pending."})
-                        return jsonify({"ok": True})
-                
-                    try:
-                        n_int = int(n)
-                        if n_int not in (1, 2):
-                            n_int = 1
-                    except:
-                        n_int = 1
-                
-                    sel = s["selections"][pf["sel_idx"]]
-                    cur_subj = pf["subjects"][pf["i"]]
-                    # خزّن التفضيلات للمادة الحالية
-                    sel.setdefault("prefs", {})[cur_subj] = {"mode": pf["current_mode"], "lpw": n_int}
-                    push_event("subject_pref", {
-                        "user_id": user_id, "username": username,
-                        "board": BOARD_CODES.get(sel["board_code"], sel["board_code"]),
-                        "grade": sel["grade"],
-                        "subject": cur_subj,
-                        "mode": pf["current_mode"],
-                        "lessons_per_week": n_int
-                    })
-                
-                    # انتقل للمادة التالية أو انهي الفلو
-                    pf["i"] += 1
-                    if pf["i"] < len(pf["subjects"]):
-                        next_subj = pf["subjects"][pf["i"]]
-                        pf["current_mode"] = None
-                        s["stage"] = "ask_mode_per_subject"
-                        tg("editMessageText", {
-                            "chat_id": chat_id, "message_id": msg_id,
-                            "text": f"🎯 Lesson type for <b>{h(next_subj)}</b>?",
-                            "parse_mode": "HTML",
-                            "reply_markup": kb_mode()
-                        })
-                        return jsonify({"ok": True})
-                    else:
-                        # خلّصنا كل المواد للسيليكشن ده
-                        s["pref_flow"] = None
-                        s["stage"] = "flow"
-                        tg("editMessageText", {
-                            "chat_id": chat_id, "message_id": msg_id,
-                            "text": ("Preferences saved ✅\n"
-                                     "You can add more selections or show tutors."),
-                            "reply_markup": kb_with_restart({
-                                "inline_keyboard": [
-                                    [{"text": "➕ Add more", "callback_data": "ADD_MORE"}],
-                                    [{"text": "🚀 Show tutors", "callback_data": "SHOW_ALL"}]
-                                ]
-                            })
-                        })
-                        return jsonify({"ok": True})
 
-
-            # Add more -> back to Step 1
+            # Add more
             if data == "ADD_MORE":
                 tg("editMessageText", {
                     "chat_id": chat_id, "message_id": msg_id,
@@ -705,12 +665,11 @@ def _handle_webhook():
                         if not any((t2.get("id") or t2["name"]) == tid for (t2, _) in ordered_cards):
                             ordered_cards.append((t, sel))
                         entry = per_teacher_map.setdefault(tid, {"id": tid, "name": t["name"], "parts": []})
-                        # ✅ مرّر prefs لكل selection
                         entry["parts"].append({
                             "subjects": sel["subjects"],
                             "board": board_name_display,
                             "grade": sel["grade"],
-                            "prefs": sel.get("prefs", {})  # << هنا
+                            "prefs": sel.get("prefs", {})
                         })
 
                 student_name = s.get("name") or "Student"
@@ -755,40 +714,34 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
-            # Send one WhatsApp link with all chosen tutors
+            # Send WhatsApp
             if data == "SEND_WA":
                 s = session(chat_id)
                 sel_ids: Set[str] = s.get("selected_teachers", set())
                 if not sel_ids:
                     tg("answerCallbackQuery", {"callback_query_id": cq["id"], "text": "Pick at least one tutor."})
                     return jsonify({"ok": True})
-            
+
                 per_teacher_map = s.get("per_teacher_map", {})
                 chosen = [per_teacher_map[tid] for tid in sel_ids if tid in per_teacher_map]
-            
-                # دالة تنسيق التفضيلات لكل مادة
+
                 def fmt_pref(p):
-                    if not p:
-                        return ""
+                    if not p: return ""
                     m = "1:1" if p.get("mode") == "1:1" else ("Group" if p.get("mode") == "group" else None)
                     w = p.get("lpw")
                     parts = []
-                    if m:
-                        parts.append(m)
-                    if w:
-                        parts.append(f"{w}/wk")
+                    if m: parts.append(m)
+                    if w: parts.append(f"{w}/wk")
                     return f" [{', '.join(parts)}]" if parts else ""
-            
-                # بداية الرسالة
+
                 msg_lines = [f"Hello, this is {s.get('name','Student')}.\nI'm interested in the following:"]
-            
                 for item in chosen:
                     name = item["name"]
                     sub_lines = []
                     for part in item["parts"]:
                         board = part["board"]
                         grade = part["grade"]
-                        prefs = part.get("prefs", {})  # جاي من selection["prefs"]
+                        prefs = part.get("prefs", {})
                         subj_bits = []
                         for subj in part.get("subjects", []):
                             subj_bits.append(f"{subj}{fmt_pref(prefs.get(subj))}")
@@ -796,26 +749,18 @@ def _handle_webhook():
                             sub_lines.append(f"{', '.join(subj_bits)} - {board} Grade {grade}")
                     if sub_lines:
                         msg_lines.append(f"- {name} ({' | '.join(sub_lines)})")
-            
+
                 msg_lines.append("Could you please share availability and fees?")
                 final_msg = "\n".join(msg_lines)
-            
-                # 🔗 استخدم /api/wa للتتبّع
+
                 wa_link = build_wa_redirect_link(
-                    user_id=user_id,            # متعرفة فوق من callback_query.from
-                    username=username,          # متعرفة فوق من callback_query.from
-                    teacher_id=None,            # هنا بنبعت لرقم البوابة الموحد
-                    wa_number=PORTAL_WA_NUMBER, # من الـ env
+                    user_id=user_id,
+                    username=username,
+                    teacher_id=None,
+                    wa_number=PORTAL_WA_NUMBER,
                     prefill_text=final_msg
                 )
-            
-                # (اختياري) لوج للأناليتكس
-                push_event("send_wa", {
-                    "user_id": user_id,
-                    "username": username,
-                    "selections": s.get("selections", [])
-                })
-            
+                push_event("send_wa", {"user_id": user_id, "username": username, "selections": s.get("selections", [])})
                 tg("sendMessage", {
                     "chat_id": chat_id,
                     "text": f'<a href="{wa_link}">📩 Open WhatsApp</a>',
@@ -825,9 +770,9 @@ def _handle_webhook():
                 })
                 return jsonify({"ok": True})
 
+            return jsonify({"ok": True})
 
-
-        # ---------- Normal messages (/start, name, fallback) ----------
+        # ---------- Normal messages ----------
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             return jsonify({"ok": True})
@@ -837,11 +782,9 @@ def _handle_webhook():
         s = session(chat_id)
 
         u = msg.get("from", {}) or {}
-        user_id = u.get("id")
-        username = u.get("username") or ""
+        user_id = u.get("id"); username = u.get("username") or ""
 
         if text.lower() in ("/start", "start"):
-            # reset session & ask for student full name
             SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": [], "mode": None, "lessons_per_week": None}
             tg("sendMessage", {
                 "chat_id": chat_id,
@@ -862,7 +805,6 @@ def _handle_webhook():
             })
             return jsonify({"ok": True})
 
-        # Fallback: point user to guided flow
         tg("sendMessage", {
             "chat_id": chat_id,
             "text": "Please use the options below to continue 👇",
@@ -873,7 +815,6 @@ def _handle_webhook():
     except Exception as e:
         print("[ERR]", repr(e))
         print(traceback.format_exc())
-        # return 200 so Telegram doesn't retry (avoids duplicates)
         return jsonify({"ok": True}), 200
 
 # Vercel entrypoint
@@ -881,7 +822,7 @@ def _handle_webhook():
 def webhook_api():
     return _handle_webhook()
 
-# Catch-all (safety if Telegram hits root)
+# Catch-all
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook_catchall(subpath=None):
