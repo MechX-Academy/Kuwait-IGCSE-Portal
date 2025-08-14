@@ -204,8 +204,8 @@
     "subject_prefs": {
       "English": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
-  }
- {
+  },
+  {
     "id": "t_hussien_khaled",
     "name": "Mr. Hussien Khaled",
     "subjects": ["Physics"],
@@ -224,5 +224,5 @@
     "subject_prefs": {
       "Physics": { "modes": ["group"], "weekly_lessons_supported": [2] }
     }
-  } 
+  }
 ]
