@@ -605,11 +605,11 @@ def _handle_webhook():
         s = session(chat_id)
 
         if text.lower() in ("/start", "start"):
-            # reset session & ask for parent name
+            # reset session & ask for student full name
             SESSIONS[chat_id] = {"stage": "ask_name", "name": "", "selections": []}
             tg("sendMessage", {
                 "chat_id": chat_id,
-                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (parent):",
+                "text": "Welcome to Kuwait IGCSE Portal 👋\nPlease type your full name (Student Full Name):",
             })
             return jsonify({"ok": True})
 
