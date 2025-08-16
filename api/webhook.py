@@ -44,7 +44,7 @@ def admin_log(text: str):
 
 # ------------ Config ------------
 PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+96597273411")) or "96597273411"
-PUBLIC_BASE_URL  = (os.getenv("PUBLIC_BASE_URL", "https:/kuwait-igcse-portal.vercel.app") or "").rstrip("/")
+PUBLIC_BASE_URL  = (os.getenv("PUBLIC_BASE_URL", "https://kuwait-igcse-portal.vercel.app") or "").rstrip("/")
 
 # WA tracking HMAC
 WA_SIGNING_SECRET = (os.getenv("WA_SIGNING_SECRET") or "").strip()
@@ -247,12 +247,24 @@ def canonical_subject(label: str) -> str | None:
     print("[WARN] canonical_subject: no match for", label)
     return None
 
+# def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
+#     wanted = canonical_subject(wanted_label)
+#     if not wanted:
+#         return False
+#     for s in teacher_subjects or []:
+#         c = canonical_subject(s)
+#         if c == wanted:
+#             return True
+#     return False
 def teacher_has_subject(teacher_subjects: List[str], wanted_label: str) -> bool:
+    # wanted_label جاي من اختيار المستخدم (اسم بشري عادة)
     wanted = canonical_subject(wanted_label)
     if not wanted:
         return False
     for s in teacher_subjects or []:
-        c = canonical_subject(s)
+        # لو المدرس مخزن كود، حوّله لاسم
+        s_label = CODE_TO_SUBJECT.get(s, s)
+        c = canonical_subject(s_label)
         if c == wanted:
             return True
     return False
@@ -268,14 +280,23 @@ def canonical_board(label: str) -> str:
     return t or ""
 
 # Precompute canonical subjects/boards per teacher
-for t in TEACHERS:
-    subj = t.get("subjects", []) or []
-    t["_subjects_canon"] = set()
-    for s in subj:
-        c = canonical_subject(s)
-        if c:
-            t["_subjects_canon"].add(c)
-    t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
+# for t in TEACHERS:
+#     subj = t.get("subjects", []) or []
+#     t["_subjects_canon"] = set()
+#     for s in subj:
+#         c = canonical_subject(s)
+#         if c:
+#             t["_subjects_canon"].add(c)
+#     t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
+
+# --- Helpers to normalize teacher subjects that might be codes ---
+def _code_to_label_if_needed(s: str) -> str:
+    # لو s كود زي MTH_EXT حوله لـ "Math (Extended)" وإلا رجّعه زي ما هو
+    return CODE_TO_SUBJECT.get(s, s)
+
+def _labels_from_list(subjects: List[str]) -> List[str]:
+    return [_code_to_label_if_needed(x) for x in (subjects or [])]
+
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
     board_can = canonical_board(board) if board else ""
@@ -325,6 +346,7 @@ def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_tex
     }
     t = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
     base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal.vercel.app").rstrip("/")
+
     # optional HMAC sig
     if WA_SIGNING_SECRET:
         sig = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -339,10 +361,15 @@ def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board:
     if t.get("grades"):
         gmin, gmax = min(t["grades"]), max(t["grades"])
         grades = f"Grades {gmin}-{gmax}"
+    # lines = [
+    #     f"<b>{h(t.get('name','Tutor'))}</b> — {h(', '.join(t.get('subjects', [])))}",
+    #     "  " + " | ".join([x for x in [h(grades) if grades else "", f"Boards {h(boards)}" if boards else ""] if x]),
+    # ]
     lines = [
-        f"<b>{h(t.get('name','Tutor'))}</b> — {h(', '.join(t.get('subjects', [])))}",
-        "  " + " | ".join([x for x in [h(grades) if grades else "", f"Boards {h(boards)}" if boards else ""] if x]),
-    ]
+    f"<b>{h(t.get('name','Tutor'))}</b> — {h(', '.join(t.get('_subjects_display') or t.get('subjects', [])))}",
+    "  " + " | ".join([x for x in [h(grades) if grades else "", f"Boards {h(boards)}" if boards else ""] if x]),
+]
+
     if t.get("bio"):      lines.append("  " + h(t["bio"]))
     if quals:             lines.append("  " + f"Qualifications: {h(quals)}")
     return "\n".join(lines)
