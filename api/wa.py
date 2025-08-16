@@ -12,32 +12,23 @@ PORTAL_WA_NUMBER  = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+965972734
 GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()
 GS_SECRET  = os.getenv("GS_SECRET", "").strip()
 
-# def push_event(event_type: str, payload: dict):
-#     if not (GS_WEBHOOK and GS_SECRET):
-#         return
-#     import requests, time
-#     rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
-#     try:
-#         requests.post(GS_WEBHOOK, data=json.dumps(rec), timeout=4)
-#     except Exception:
-#         pass
 def push_event(event_type: str, payload: dict):
-    # لو مش مفعّل، اطلع
     if not (GS_WEBHOOK and GS_SECRET):
         return
-    import requests, time, json
+    import requests, time
     rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
     try:
-        # ابعته JSON صريح
         requests.post(GS_WEBHOOK, json=rec, timeout=4)
     except Exception as e:
         print("[ANALYTICS] push_event failed:", repr(e))
+
 def _client_ip():
     return (request.headers.get("x-forwarded-for") or request.remote_addr or "").split(",")[0].strip()
 
-# مهم: في فايل مستقل، خلي المسار هو "/"
-@app.get("/")
-def wa_redirect():
+# ✅ اسمع على كل المسارات الشائعة: "/" و"/api/wa" و أي مسار يتبعت
+@app.route("/", defaults={"_path": ""}, methods=["GET"])
+@app.route("/<path:_path>", methods=["GET"])
+def wa_redirect(_path=""):
     """
     /api/wa?t=<base64>&sig=<hmac>
     التوكن t فيه: {"user_id","username","teacher_id","wa","text"}
@@ -73,7 +64,6 @@ def wa_redirect():
     wa  = re.sub(r"\D+", "", (data.get("wa") or "")) or PORTAL_WA_NUMBER
     txt = data.get("text") or ""
     target = f"https://wa.me/{wa}?text={quote(txt)}"
-    print("[WA] ok redirect", {"ip": _client_ip(), "has_sig": bool(sig), "len_t": len(t)})
 
     # صفحة بانر + تحويل سريع
     html_page = f"""<!doctype html>
