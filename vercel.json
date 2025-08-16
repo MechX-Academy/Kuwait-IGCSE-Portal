@@ -3,5 +3,8 @@
     "api/webhook.py": {
       "includeFiles": "api/teachers.json"
     }
-  }
+  },
+  "routes": [
+    { "src": "/api/wa", "dest": "api/wa.py" }
+  ]
 }
