@@ -73,6 +73,7 @@ def wa_redirect():
     wa  = re.sub(r"\D+", "", (data.get("wa") or "")) or PORTAL_WA_NUMBER
     txt = data.get("text") or ""
     target = f"https://wa.me/{wa}?text={quote(txt)}"
+    print("[WA] ok redirect", {"ip": _client_ip(), "has_sig": bool(sig), "len_t": len(t)})
 
     # صفحة بانر + تحويل سريع
     html_page = f"""<!doctype html>
