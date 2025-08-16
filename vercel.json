@@ -1,10 +1,15 @@
 {
   "functions": {
+    "api/*.py": {
+      "runtime": "python3.11",
+      "maxDuration": 10
+    },
     "api/webhook.py": {
       "includeFiles": "api/teachers.json"
     }
   },
   "routes": [
-    { "src": "/api/wa", "dest": "api/wa.py" }
+    { "src": "/api/wa", "dest": "api/wa.py" },
+    { "src": "/api/webhook", "dest": "api/webhook.py" }
   ]
 }
