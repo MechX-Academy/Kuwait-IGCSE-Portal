@@ -52,21 +52,7 @@ PUBLIC_BASE_URL  = (os.getenv("PUBLIC_BASE_URL", "https://kuwait-igcse-portal.ve
 WA_SIGNING_SECRET = os.getenv("WA_SIGNING_SECRET") or None
 # TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
 
-def generate_hmac_signature(secret: str, payload: str) -> str:
-    """توليد توقيع HMAC SHA256"""
-    return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-# Google Sheets Analytics
-GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()  # https://script.google.com/.../exec
-GS_SECRET  = os.getenv("GS_SECRET", "").strip()
 
-def push_event(event_type: str, payload: Dict[str, Any]):
-    if not GS_WEBHOOK or not GS_SECRET:
-        return
-    rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
-    try:
-        requests.post(GS_WEBHOOK, data=json.dumps(rec), timeout=4)
-    except Exception as e:
-        print("[ANALYTICS] push_event failed:", repr(e))
 
 # ------------ Load data ------------
 DATA_PATH = os.path.join(os.path.dirname(__file__), "teachers.json")
