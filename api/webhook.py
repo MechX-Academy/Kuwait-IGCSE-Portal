@@ -122,7 +122,7 @@ VALID_SUBJECTS = {
 }
 
 SUBJECT_GROUPS = {
-    "Core (IGCSE) subjects": [
+    "Extended (IGCSE) subjects": [
         ("MTH_EXT", "Math (Extended)"),
         ("PHY_EXT", "Physics (Extended)"),
         ("CHE_EXT", "Chemistry (Extended)"),
