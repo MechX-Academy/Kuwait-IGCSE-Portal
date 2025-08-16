@@ -36,7 +36,7 @@ def tg(method: str, payload: Dict[str, Any]):
         return None
 
 def tg_edit_or_send(chat_id: int, message_id: int, text: str, reply_markup=None, parse_mode="HTML"):
-    payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": parse_mode, "reply_markup": reply_markup}
+    payload = {"chat_id": chat_id, "message_id": message_id, "text": text[:4096], "parse_mode": parse_mode, "reply_markup": reply_markup}
     r = tg("editMessageText", payload)
     ok = False
     try:
@@ -45,7 +45,7 @@ def tg_edit_or_send(chat_id: int, message_id: int, text: str, reply_markup=None,
     except Exception:
         ok = False
     if not ok:
-        tg("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": parse_mode, "reply_markup": reply_markup})
+        tg("sendMessage", {"chat_id": chat_id, "text": text[:4096], "parse_mode": parse_mode, "reply_markup": reply_markup})
 
 def admin_log(text: str):
     if not (ADMIN_LOG_CHAT_ID and BOT_API):
