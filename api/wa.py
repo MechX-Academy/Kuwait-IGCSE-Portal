@@ -12,16 +12,26 @@ PORTAL_WA_NUMBER  = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+965972734
 GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()
 GS_SECRET  = os.getenv("GS_SECRET", "").strip()
 
+# def push_event(event_type: str, payload: dict):
+#     if not (GS_WEBHOOK and GS_SECRET):
+#         return
+#     import requests, time
+#     rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
+#     try:
+#         requests.post(GS_WEBHOOK, data=json.dumps(rec), timeout=4)
+#     except Exception:
+#         pass
 def push_event(event_type: str, payload: dict):
+    # لو مش مفعّل، اطلع
     if not (GS_WEBHOOK and GS_SECRET):
         return
-    import requests, time
+    import requests, time, json
     rec = {"ts": int(time.time()), "event": event_type, **payload, "_secret": GS_SECRET}
     try:
-        requests.post(GS_WEBHOOK, data=json.dumps(rec), timeout=4)
-    except Exception:
-        pass
-
+        # ابعته JSON صريح
+        requests.post(GS_WEBHOOK, json=rec, timeout=4)
+    except Exception as e:
+        print("[ANALYTICS] push_event failed:", repr(e))
 def _client_ip():
     return (request.headers.get("x-forwarded-for") or request.remote_addr or "").split(",")[0].strip()
 
