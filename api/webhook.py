@@ -389,10 +389,12 @@ def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_tex
         "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
         "text": prefill_text
     }
-    t = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
+    t = base64.urlsafe_b64encode(
+        json.dumps(payload, ensure_ascii=False).encode()
+    ).decode().rstrip("=")
+
     base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal.vercel.app").rstrip("/")
 
-    # optional HMAC sig (نوقّع التوكن بالكامل)
     if WA_SIGNING_SECRET:
         sig = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
         return f"{base}/api/wa?t={t}&sig={sig}"
@@ -548,8 +550,7 @@ def _check_telegram_secret():
         print("[WEBHOOK] bad secret header")
     return ok
 
-def _client_ip():
-    return (request.headers.get("x-forwarded-for") or request.remote_addr or "").split(",")[0].strip()
+
 
 # ------------ Routes ------------
 @app.get("/api/webhook")
@@ -955,72 +956,7 @@ def _handle_webhook():
 def webhook_api():
     return _handle_webhook()
 
-# Catch-all
 @app.route("/", defaults={"subpath": ""}, methods=["POST"])
 @app.route("/<path:subpath>", methods=["POST"])
 def webhook_catchall(subpath=None):
     return _handle_webhook()
-
-# ------------- /api/wa (tracking + banner + redirect) -------------
-@app.get("/api/wa")
-def wa_redirect():
-    t = request.args.get("t", "")
-    sig = request.args.get("sig", "")
-
-    # تحقق HMAC إلزامي لو السر موجود
-    if WA_SIGNING_SECRET:
-        good = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(good, sig or ""):
-            return jsonify(ok=False, error="bad signature"), 403
-
-    # Decode base64 urlsafe
-    try:
-        pad = "=" * (-len(t) % 4)
-        raw = base64.urlsafe_b64decode((t + pad).encode("utf-8"))
-        data = json.loads(raw.decode("utf-8"))
-    except Exception:
-        return jsonify(ok=False, error="bad token"), 400
-
-    # Log analytics
-    try:
-        push_event("whatsapp_click", {
-            "user_id": data.get("user_id"),
-            "username": data.get("username") or "",
-            "teacher_id": data.get("teacher_id"),
-            "ip": _client_ip()
-        })
-    except Exception:
-        pass
-
-    wa = re.sub(r"\D+", "", (data.get("wa") or "")) or PORTAL_WA_NUMBER
-    txt = data.get("text") or ""
-    target = f"https://wa.me/{wa}?text={quote(txt)}"
-
-
-
-
-    # Banner + quick redirect
-    html_page = f"""<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="0.6;url={html.escape(target)}">
-<title>Redirecting…</title>
-<style>
-  body {{ font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; background:#0b0f13; color:#e5e7eb; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }}
-  .box {{ text-align:center; max-width:640px; padding:28px 32px; background:#111827; border:1px solid #1f2937; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.35); }}
-  h1 {{ margin:0 0 10px; font-weight:700; font-size:22px; letter-spacing:.2px; }}
-  p  {{ margin:8px 0 0; line-height:1.5; color:#9ca3af; }}
-  a  {{ color:#93c5fd; text-decoration:none; }}
-</style>
-<script>
-  setTimeout(function(){{ window.location.replace("{html.escape(target)}"); }}, 600);
-</script>
-</head><body>
-  <div class="box">
-    <h1>This App done by Dr.Eng. Ahmed Fathy</h1>
-    <p>We're opening WhatsApp for you… If it doesn't open, <a href="{html.escape(target)}">tap here</a>.</p>
-  </div>
-</body></html>"""
-    resp = make_response(html_page, 200)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return resp
