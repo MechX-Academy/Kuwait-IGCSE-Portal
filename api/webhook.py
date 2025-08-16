@@ -47,8 +47,14 @@ PORTAL_WA_NUMBER = re.sub(r"\D+", "", os.getenv("PORTAL_WA_NUMBER", "+9659727341
 PUBLIC_BASE_URL  = (os.getenv("PUBLIC_BASE_URL", "https://kuwait-igcse-portal.vercel.app") or "").rstrip("/")
 
 # WA tracking HMAC
-WA_SIGNING_SECRET = (os.getenv("WA_SIGNING_SECRET") or "").strip()
+#WA_SIGNING_SECRET = (os.getenv("WA_SIGNING_SECRET") or "").strip()
+# قراءة الـ secrets من الـ Environment Variables
+WA_SIGNING_SECRET = os.getenv("WA_SIGNING_SECRET") or None
+# TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
 
+def generate_hmac_signature(secret: str, payload: str) -> str:
+    """توليد توقيع HMAC SHA256"""
+    return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
 # Google Sheets Analytics
 GS_WEBHOOK = os.getenv("GS_WEBHOOK", "").strip()  # https://script.google.com/.../exec
 GS_SECRET  = os.getenv("GS_SECRET", "").strip()
@@ -279,6 +285,14 @@ def canonical_board(label: str) -> str:
         return "edexcel"
     return t or ""
 
+
+# --- Helpers to normalize teacher subjects that might be codes ---
+def _code_to_label_if_needed(s: str) -> str:
+    # لو s كود زي MTH_EXT حوله لـ "Math (Extended)" وإلا رجّعه زي ما هو
+    return CODE_TO_SUBJECT.get(s, s)
+
+def _labels_from_list(subjects: List[str]) -> List[str]:
+    return [_code_to_label_if_needed(x) for x in (subjects or [])]
 # Precompute canonical subjects/boards per teacher
 # for t in TEACHERS:
 #     subj = t.get("subjects", []) or []
@@ -288,14 +302,24 @@ def canonical_board(label: str) -> str:
 #         if c:
 #             t["_subjects_canon"].add(c)
 #     t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
+# Precompute canonical subjects/boards per teacher (supports codes like MTH_EXT)
+for t in TEACHERS:
+    raw_subj = t.get("subjects", []) or []
+    # أسماء للعرض (تحويل الأكواد لأسماء بشرية)
+    t["_subjects_display"] = _labels_from_list(raw_subj)
 
-# --- Helpers to normalize teacher subjects that might be codes ---
-def _code_to_label_if_needed(s: str) -> str:
-    # لو s كود زي MTH_EXT حوله لـ "Math (Extended)" وإلا رجّعه زي ما هو
-    return CODE_TO_SUBJECT.get(s, s)
+    # مجموعة canonical للماتشينج
+    t["_subjects_canon"] = set()
+    for s in t["_subjects_display"]:
+        c = canonical_subject(s)
+        if c:
+            t["_subjects_canon"].add(c)
 
-def _labels_from_list(subjects: List[str]) -> List[str]:
-    return [_code_to_label_if_needed(x) for x in (subjects or [])]
+    # boards canonical
+    t["_boards_canon"] = [canonical_board(b) for b in (t.get("boards") or [])]
+
+
+
 
 
 def match_teachers(subject=None, grade=None, board=None, limit=4):
@@ -336,6 +360,27 @@ def collect_best_matches(subjects: List[str], grade: int, board: str, k: int = 4
     return out
 
 # ------------ WA redirect (tracking via /api/wa) ------------
+# def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_text):
+#     payload = {
+#         "user_id": user_id,
+#         "username": username or "",
+#         "teacher_id": teacher_id,
+#         "wa": re.sub(r"\D+", "", wa_number or "") or PORTAL_WA_NUMBER,
+#         "text": prefill_text
+#     }
+#     t = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
+#     base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal.vercel.app").rstrip("/")
+
+#     # optional HMAC sig
+#     # if WA_SIGNING_SECRET:
+#     #     sig = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
+#     #     return f"{base}/api/wa?t={t}&sig={sig}"
+#     # return f"{base}/api/wa?t={t}"
+
+#     if WA_SIGNING_SECRET:
+#     good = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
+#     if not hmac.compare_digest(good, sig or ""):
+#         return jsonify(ok=False, error="bad signature"), 403
 def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_text):
     payload = {
         "user_id": user_id,
@@ -347,11 +392,12 @@ def build_wa_redirect_link(user_id, username, teacher_id, wa_number, prefill_tex
     t = base64.urlsafe_b64encode(json.dumps(payload, ensure_ascii=False).encode()).decode().rstrip("=")
     base = (os.getenv("PUBLIC_BASE_URL") or "https://kuwait-igcse-portal.vercel.app").rstrip("/")
 
-    # optional HMAC sig
+    # optional HMAC sig (نوقّع التوكن بالكامل)
     if WA_SIGNING_SECRET:
         sig = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
         return f"{base}/api/wa?t={t}&sig={sig}"
     return f"{base}/api/wa?t={t}"
+
 
 # ------------ Rendering ------------
 def format_teacher_caption_html(t: Dict[str,Any], student_full_name: str, board: str, grade: int, subjects: List[str]) -> str:
@@ -918,16 +964,13 @@ def webhook_catchall(subpath=None):
 # ------------- /api/wa (tracking + banner + redirect) -------------
 @app.get("/api/wa")
 def wa_redirect():
-    """
-    Reads token t (Base64-URL-safe) + optional sig (HMAC) -> logs event -> shows banner page -> redirects to wa.me
-    """
     t = request.args.get("t", "")
     sig = request.args.get("sig", "")
 
-    # Verify HMAC signature if provided
-    if WA_SIGNING_SECRET and sig:
+    # تحقق HMAC إلزامي لو السر موجود
+    if WA_SIGNING_SECRET:
         good = hmac.new(WA_SIGNING_SECRET.encode("utf-8"), t.encode("utf-8"), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(good, sig):
+        if not hmac.compare_digest(good, sig or ""):
             return jsonify(ok=False, error="bad signature"), 403
 
     # Decode base64 urlsafe
@@ -952,6 +995,9 @@ def wa_redirect():
     wa = re.sub(r"\D+", "", (data.get("wa") or "")) or PORTAL_WA_NUMBER
     txt = data.get("text") or ""
     target = f"https://wa.me/{wa}?text={quote(txt)}"
+
+
+
 
     # Banner + quick redirect
     html_page = f"""<!doctype html>
